@@ -4,6 +4,7 @@ import { ListingAiAnalysisBlock } from "@/components/listings/ListingAiAnalysisB
 import { ListingResumenPanel } from "@/components/listings/ListingResumenPanel";
 import { decodeListingTitle } from "@/lib/decode-html";
 import type { ListingSummary } from "@/lib/listing/summary-types";
+import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { portalBadge } from "@/lib/portals";
 import { SaveListingButton } from "@/components/listings/SaveListingButton";
 import { listingDetailHref } from "@/lib/listing/return-navigation";
@@ -73,17 +74,20 @@ export function PremiumListingCard({
   useEffect(() => setThumbFailed(false), [thumbnailUrl]);
   const showThumb = Boolean(imgSrc) && !thumbFailed;
 
+  const effectiveSqm = resolveListingSqm(sqm, title);
   const specs = [
     bedrooms != null ? `${bedrooms} hab.` : null,
     bathrooms != null ? `${bathrooms} baños` : null,
-    sqm != null ? `${sqm} m²` : null,
+    effectiveSqm != null ? `${effectiveSqm} m²` : null,
   ]
     .filter(Boolean)
     .join(" · ");
 
   const displayRoi = summary?.roi.grossRoiPct ?? roi ?? null;
   const displayRent = summary?.roi.rentEstMonthly ?? rentEst ?? null;
-  const priceM2 = summary?.pricePerSqm ?? (sqm && sqm > 0 ? price / sqm : null);
+  const priceM2 =
+    summary?.pricePerSqm ??
+    (effectiveSqm != null && effectiveSqm > 0 ? price / effectiveSqm : null);
 
   const imageHeight = compact ? "h-32 sm:h-36" : "h-44 sm:h-48";
 
@@ -172,7 +176,16 @@ export function PremiumListingCard({
         </div>
 
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-          <Metric label="€/m²" value={priceM2 != null ? `${Math.round(priceM2).toLocaleString("es-ES")}` : "—"} />
+          <Metric
+            label="€/m²"
+            value={
+              priceM2 != null
+                ? `${Math.round(priceM2).toLocaleString("es-ES")}`
+                : summaryLoading && effectiveSqm == null
+                  ? "…"
+                  : "—"
+            }
+          />
           <Metric
             label="vs CP"
             value={

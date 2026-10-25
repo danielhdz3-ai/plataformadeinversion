@@ -64,6 +64,11 @@ export async function runFotocasaSale(options = {}) {
               geocodeQuality = 5;
             }
           }
+          if ((lon == null || lat == null) && zone.lng != null && zone.lat != null) {
+            lon = zone.lng;
+            lat = zone.lat;
+            geocodeQuality = 4;
+          }
           if (lon == null || lat == null) continue;
 
           const payload = {
@@ -83,6 +88,7 @@ export async function runFotocasaSale(options = {}) {
             status: "active",
             geocode_quality: geocodeQuality,
             scraped_at: new Date().toISOString(),
+            last_seen_at: new Date().toISOString(),
           };
 
           if (dryRun()) {

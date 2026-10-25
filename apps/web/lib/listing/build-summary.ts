@@ -3,6 +3,7 @@ import { resolveRentEstMonthly } from "@/lib/listing/rent-est";
 import type { ListingSummary, RentComparable } from "@/lib/listing/summary-types";
 import { portalFromNotaryRaw } from "@/lib/notariado/normalize-portal";
 
+import type { ListingCensusSection } from "@/lib/listing/census-types";
 import { DEFAULT_ITP_PCT } from "@/lib/listing/tax-itp";
 
 /** Serie indicativa Barcelona (venta/alquiler €/m²) — alineada con fuentes oficiales en UI. */
@@ -65,7 +66,8 @@ export function buildListingSummary(
   comparables: RentComparable[],
   notary: Record<string, unknown> | null,
   officialMarket: { source: string; period: string; metrics: Record<string, unknown> }[],
-  itpPct: number = DEFAULT_ITP_PCT
+  itpPct: number = DEFAULT_ITP_PCT,
+  census: ListingCensusSection | null = null
 ): ListingSummary {
   const inv = row.listing_investment;
   const price = Number(row.price);
@@ -115,8 +117,8 @@ export function buildListingSummary(
     },
     officialMarket,
     priceEvolution: buildPriceEvolution(cpAvg),
-    demographics: {
-      note: "Datos de sección censal (INE) — sincronización en roadmap. Usa mercado notarial del CP como proxy.",
+    demographics: census ?? {
+      note: "Sin sección censal INE para este punto. Usa mercado notarial del CP como proxy.",
     },
     localDevelopments: notary?.price_m2 != null ? [] : [...BARCELONA_DEVELOPMENTS],
     nearbyPlaces: {

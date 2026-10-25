@@ -4,6 +4,7 @@ import type { ScanPolygon } from "@/lib/scan/types";
 import { MapViewControls } from "@/components/map/MapViewControls";
 import { polygonBounds } from "@/lib/map/polygon-bounds";
 import { BARCELONA_VIEW, SPAIN_BBOX, SPAIN_MAX_BOUNDS, SPAIN_VIEW, type SpainMapView } from "@/lib/map/spain-bounds";
+import type { MapFeatureCollection } from "@/lib/map/geojson-types";
 import { layoutMapPins } from "@/lib/map/layout-map-pins";
 import { applyOscuroContrast } from "@/lib/map/apply-oscuro-contrast";
 import { mapStyleFor, type MapTheme, type MapVisualMode } from "@/lib/map/map-styles";
@@ -24,6 +25,9 @@ export type RoiPin = {
 type Props = {
   pins?: RoiPin[];
   drawMode?: boolean;
+  /** Un clic en el mapa fija el centro (scan por radio). */
+  pickCenterMode?: boolean;
+  onMapCenterPick?: (lng: number, lat: number) => void;
   polygon?: ScanPolygon | null;
   onPolygonChange?: (polygon: ScanPolygon | null) => void;
   onBboxChange?: (bbox: [number, number, number, number], meta?: { zoom: number }) => void;
@@ -46,6 +50,8 @@ type Props = {
   /** Encuadre explícito (prioridad sobre autoFit*). Cambia fitKey al cambiar scan/zona. */
   mapFitBounds?: [[number, number], [number, number]] | null;
   fitKey?: string;
+  /** Capa INE (secciones censales) — GeoJSON FeatureCollection. */
+  censusOverlay?: MapFeatureCollection | null;
 };
 
 function isInSpain(lng: number, lat: number) {
@@ -58,10 +64,43 @@ function isInSpain(lng: number, lat: number) {
 }
 
 const POLY_SOURCE = "scan-polygon";
+const CENSUS_SOURCE = "census-sections";
+
+function syncCensusOverlay(map: maplibregl.Map, data: MapFeatureCollection | null | undefined) {
+  const empty: MapFeatureCollection = { type: "FeatureCollection", features: [] };
+  const fc = data?.features?.length ? data : empty;
+  if (map.getSource(CENSUS_SOURCE)) {
+    (map.getSource(CENSUS_SOURCE) as maplibregl.GeoJSONSource).setData(fc);
+    return;
+  }
+  if (!data?.features?.length) return;
+  map.addSource(CENSUS_SOURCE, { type: "geojson", data: fc });
+  map.addLayer({
+    id: `${CENSUS_SOURCE}-fill`,
+    type: "fill",
+    source: CENSUS_SOURCE,
+    paint: {
+      "fill-color": "#7c3aed",
+      "fill-opacity": 0.08,
+    },
+  });
+  map.addLayer({
+    id: `${CENSUS_SOURCE}-line`,
+    type: "line",
+    source: CENSUS_SOURCE,
+    paint: {
+      "line-color": "#6d28d9",
+      "line-width": 1,
+      "line-opacity": 0.45,
+    },
+  });
+}
 
 export function RoiScanMap({
   pins = [],
   drawMode = false,
+  pickCenterMode = false,
+  onMapCenterPick,
   polygon,
   onPolygonChange,
   onBboxChange,
@@ -78,6 +117,7 @@ export function RoiScanMap({
   autoFitPins = false,
   mapFitBounds = null,
   fitKey = "",
+  censusOverlay = null,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -87,6 +127,8 @@ export function RoiScanMap({
   const drawRingRef = useRef<[number, number][]>([]);
   const polygonRef = useRef(polygon);
   const drawModeRef = useRef(drawMode);
+  const pickCenterModeRef = useRef(pickCenterMode);
+  const onCenterPickRef = useRef(onMapCenterPick);
   const [mapReady, setMapReady] = useState(false);
   const [zoom, setZoom] = useState(BARCELONA_VIEW.zoom);
   const [theme, setTheme] = useState<MapTheme>("claro");
@@ -97,6 +139,14 @@ export function RoiScanMap({
   const lastFitPolygonKeyRef = useRef<string | null>(null);
   const lastFitPinsKeyRef = useRef<string | null>(null);
   const lastExplicitFitKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    pickCenterModeRef.current = pickCenterMode;
+  }, [pickCenterMode]);
+
+  useEffect(() => {
+    onCenterPickRef.current = onMapCenterPick;
+  }, [onMapCenterPick]);
 
   useEffect(() => {
     drawModeRef.current = drawMode;
@@ -131,6 +181,17 @@ export function RoiScanMap({
   useEffect(() => {
     polygonRef.current = polygon;
   }, [polygon]);
+  const censusOverlayRef = useRef(censusOverlay);
+  useEffect(() => {
+    censusOverlayRef.current = censusOverlay;
+  }, [censusOverlay]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    syncCensusOverlay(map, censusOverlay ?? null);
+  }, [censusOverlay, mapReady]);
+
   const onBboxRef = useRef(onBboxChange);
   const onPolyRef = useRef(onPolygonChange);
   const onSelectRef = useRef(onSelectPin);
@@ -186,6 +247,7 @@ export function RoiScanMap({
       if (themeRef.current === "claro") {
         appliedThemeRef.current = "claro";
       }
+      syncCensusOverlay(map, censusOverlayRef.current ?? null);
       setMapReady(true);
       emitBbox(true);
     });
@@ -196,12 +258,19 @@ export function RoiScanMap({
     if (containerRef.current) ro.observe(containerRef.current);
 
     const onMapClick = (e: maplibregl.MapMouseEvent) => {
-      if (!drawModeRef.current) return;
-      if (polygonRef.current) return;
       const target = e.originalEvent.target as HTMLElement | null;
-      if (target?.closest?.(".roi-pin, .map-view-controls, .map-draw-toolbar")) return;
+      if (target?.closest?.(".roi-pin, .map-view-controls, .map-draw-toolbar, .map-pick-hint")) return;
+
       const { lng, lat } = e.lngLat;
       if (!isInSpain(lng, lat)) return;
+
+      if (pickCenterModeRef.current) {
+        onCenterPickRef.current?.(lng, lat);
+        return;
+      }
+
+      if (!drawModeRef.current) return;
+      if (polygonRef.current) return;
       drawRingRef.current.push([lng, lat]);
       updateDrawLayer(map, drawRingRef.current, false);
     };
@@ -247,6 +316,7 @@ export function RoiScanMap({
       if (themeRef.current === "oscuro") {
         applyOscuroContrast(map);
       }
+      syncCensusOverlay(map, censusOverlayRef.current ?? null);
       const poly = polygonRef.current;
       if (poly) {
         const ring = poly.coordinates[0]!.slice(0, -1) as [number, number][];
@@ -492,7 +562,10 @@ export function RoiScanMap({
   }
 
   return (
-    <div className={`map-surface relative h-full min-h-0 ${className}`} data-map-theme={theme}>
+    <div
+      className={`map-surface relative h-full min-h-0 ${pickCenterMode ? "cursor-crosshair" : ""} ${className}`}
+      data-map-theme={theme}
+    >
       <div
         ref={containerRef}
         className={`absolute inset-0 h-full w-full ${
@@ -501,6 +574,13 @@ export function RoiScanMap({
       />
       {showViewControls && (
         <MapViewControls theme={theme} visual={visual} onTheme={setTheme} onVisual={setVisual} />
+      )}
+      {pickCenterMode && !drawMode && (
+        <div className="map-pick-hint pointer-events-none absolute bottom-4 left-4 right-4 flex justify-center sm:left-4 sm:right-auto sm:justify-start">
+          <span className="max-w-md rounded-lg bg-neutral-950/90 px-4 py-2.5 text-center text-xs font-medium text-white shadow-lg sm:text-left">
+            Un clic en el mapa = centro del scan · Ajusta el radio en el panel
+          </span>
+        </div>
       )}
       {drawMode && (
         <div className="map-draw-toolbar absolute bottom-4 left-4 flex max-w-lg flex-wrap gap-2">

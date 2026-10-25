@@ -38,12 +38,11 @@ export default function NewScanPage() {
   const [step, setStep] = useState(0);
   const [pins, setPins] = useState<Pin[]>([]);
   const [polygon, setPolygon] = useState<ScanPolygon | null>(null);
-  const [locationMode, setLocationMode] = useState<"search" | "draw">("search");
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<GeocodeHit[]>([]);
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [center, setCenter] = useState<{ lng: number; lat: number } | null>(null);
-  const [radiusKm, setRadiusKm] = useState(1.5);
+  const [radiusKm, setRadiusKm] = useState(2);
   const [flyTo, setFlyTo] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -82,7 +81,7 @@ export default function NewScanPage() {
 
   const visibleBboxRef = useRef<[number, number, number, number] | null>(null);
 
-  const zoneReady = Boolean(polygon || (center && locationMode === "search"));
+  const zoneReady = Boolean(center && polygon);
 
   const areaKm2 = useMemo(() => circleAreaKm2(radiusKm), [radiusKm]);
 
@@ -109,9 +108,9 @@ export default function NewScanPage() {
   const usesRoi = scanOperationUsesRoi(operation);
 
   useEffect(() => {
-    if (locationMode !== "search" || !center) return;
+    if (!center) return;
     setPolygon(circlePolygon(center.lng, center.lat, radiusKm));
-  }, [center, radiusKm, locationMode]);
+  }, [center, radiusKm]);
 
   useEffect(() => {
     if (query.trim().length < 2) {
@@ -138,11 +137,18 @@ export default function NewScanPage() {
     setPins(data.features ?? []);
   }, []);
 
+  const applyScanCenter = useCallback((lng: number, lat: number, label?: string) => {
+    setCenter({ lng, lat });
+    setPolygon(circlePolygon(lng, lat, radiusKm));
+    if (label) setPlaceLabel(label);
+    else setPlaceLabel("Zona señalada en mapa");
+  }, [radiusKm]);
+
   function pickPlace(hit: GeocodeHit) {
     setQuery(hit.label.split(",")[0] ?? hit.label);
-    setPlaceLabel(hit.label);
     setSuggestions([]);
-    setCenter({ lng: hit.lng, lat: hit.lat });
+    setSelectedPinId(null);
+    applyScanCenter(hit.lng, hit.lat, hit.label);
     const zoom = hit.bbox
       ? Math.min(
           15,
@@ -150,7 +156,6 @@ export default function NewScanPage() {
         )
       : 13;
     setFlyTo({ center: [hit.lng, hit.lat], zoom });
-    setPolygon(circlePolygon(hit.lng, hit.lat, radiusKm));
   }
 
   async function startScan() {
@@ -202,8 +207,6 @@ export default function NewScanPage() {
     router.push(`/app/scan/${body.scanId}`);
   }
 
-  const zoneVisual = locationMode === "draw" ? "drawn" : "radius";
-
   return (
     <div className="flex h-full min-h-0 flex-1 overflow-hidden">
       <aside className="flex min-h-0 w-full max-w-[440px] shrink-0 flex-col border-r border-neutral-200 bg-white lg:w-[440px]">
@@ -228,96 +231,83 @@ export default function NewScanPage() {
                   Fuentes: kelify · pisos.com · Hipoges · Solvia · Fotocasa · habitaclia
                 </div>
               </div>
-              <div className="flex rounded-lg border border-neutral-200 p-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLocationMode("search");
-                    setSelectedPinId(null);
+              <p className="text-sm text-neutral-600">
+                Busca un CP o barrio, <strong className="font-medium text-neutral-900">haz un clic en el mapa</strong>{" "}
+                o elige un piso. El área azul es un círculo — no hace falta dibujar vértices.
+              </p>
+              <div className="relative">
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && suggestions[0]) {
+                      e.preventDefault();
+                      pickPlace(suggestions[0]);
+                    }
                   }}
-                  className={`flex-1 rounded-md py-2 text-sm font-medium ${locationMode === "search" ? "bg-neutral-950 text-white" : "text-neutral-700"}`}
-                >
-                  Buscar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLocationMode("draw");
-                    setCenter(null);
-                    setPolygon(null);
-                    setPlaceLabel(null);
-                    setSelectedPinId(null);
-                  }}
-                  className={`flex-1 rounded-md py-2 text-sm font-medium ${locationMode === "draw" ? "bg-neutral-950 text-white" : "text-neutral-700"}`}
-                >
-                  Dibujar área
-                </button>
-              </div>
-              {locationMode === "search" ? (
-                <div className="relative">
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && suggestions[0]) {
-                        e.preventDefault();
-                        pickPlace(suggestions[0]);
-                      }
-                    }}
-                    placeholder="CP (5 dígitos) o barrio — ej. 08906, Castellón"
-                    className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm"
-                  />
-                  {suggestions.length > 0 && (
-                    <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg">
-                      {suggestions.map((s, idx) => (
-                        <li key={`${s.lat},${s.lng},${idx}`}>
-                          <button
-                            type="button"
-                            onClick={() => pickPlace(s)}
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-neutral-100"
-                          >
-                            {s.label}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2 text-sm text-neutral-600">
-                  <p>Dibuja el polígono en el mapa (solo España).</p>
-                  <p className="text-xs text-neutral-500">
-                    Mínimo 3 clics en el mapa → «Cerrar zona» o doble clic. Los pins del mapa se
-                    seleccionan con un clic normal.
-                  </p>
-                  {polygon && (
-                    <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-                      Zona cerrada — ya puedes pulsar Siguiente.
-                    </p>
-                  )}
-                </div>
-              )}
-              {placeLabel && locationMode === "search" && (
-                <p className="rounded-lg border border-neutral-200 bg-[#f7f6f3] px-3 py-2 text-sm text-neutral-800">
-                  Encontrado — área ~{areaKm2.toFixed(1)} km² (radio {radiusKm} km)
-                </p>
-              )}
-              {selectedPinId && locationMode === "search" && (
-                <p className="rounded-lg border border-neutral-200 bg-[#f7f6f3] px-3 py-2 text-sm text-neutral-800">
-                  Pin seleccionado — centro del scan en ese inmueble (radio {radiusKm} km). Pulsa
-                  Siguiente cuando quieras.
-                </p>
-              )}
-              {locationMode === "search" && (
-                <RangeField
-                  label="Radio de búsqueda"
-                  value={radiusKm}
-                  min={0.5}
-                  max={5}
-                  step={0.1}
-                  suffix=" km"
-                  onChange={setRadiusKm}
+                  placeholder="CP (5 dígitos) o barrio — ej. 08906, Sants"
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm"
                 />
+                {suggestions.length > 0 && (
+                  <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg">
+                    {suggestions.map((s, idx) => (
+                      <li key={`${s.lat},${s.lng},${idx}`}>
+                        <button
+                          type="button"
+                          onClick={() => pickPlace(s)}
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-neutral-100"
+                        >
+                          {s.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {placeLabel && (
+                <p className="rounded-lg border border-neutral-200 bg-[#f7f6f3] px-3 py-2 text-sm text-neutral-800">
+                  {placeLabel} · ~{areaKm2.toFixed(1)} km² (radio {radiusKm} km)
+                </p>
+              )}
+              {selectedPinId && (
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                  Centro en el piso seleccionado — puedes mover la zona con otro clic en el mapa.
+                </p>
+              )}
+              {radiusKm < 2 && (
+                <p className="text-xs text-neutral-600">
+                  Recomendado ≥ 2 km para importar cientos de ventas del barrio.
+                </p>
+              )}
+              <RangeField
+                label="Tamaño del área (radio)"
+                value={radiusKm}
+                min={0.8}
+                max={5}
+                step={0.2}
+                suffix=" km"
+                onChange={setRadiusKm}
+              />
+              <div className="flex flex-wrap gap-2">
+                {[1.5, 2, 2.5, 3].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setRadiusKm(r)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                      Math.abs(radiusKm - r) < 0.05
+                        ? "border-neutral-950 bg-neutral-950 text-white"
+                        : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400"
+                    }`}
+                  >
+                    {r} km
+                  </button>
+                ))}
+              </div>
+              {!center && (
+                <p className="rounded-lg border border-dashed border-neutral-300 px-3 py-2 text-xs text-neutral-500">
+                  Elige ubicación para continuar (buscador, mapa o pin).
+                </p>
               )}
               <button
                 type="button"
@@ -676,7 +666,7 @@ export default function NewScanPage() {
                   checked={notifyEmail}
                   onChange={(e) => setNotifyEmail(e.target.checked)}
                 />
-                Avísame por correo cuando termine (requiere Resend — próximamente)
+                Avísame por correo cuando termine (requiere cuenta con email y Resend en prod)
               </label>
 
               <p className="text-xs text-neutral-500">
@@ -720,15 +710,15 @@ export default function NewScanPage() {
 
       <div className="relative min-h-0 flex-1">
         <RoiScanMap
-          drawMode={step === 0 && locationMode === "draw"}
-          polygon={polygon}
-          zoneVisual={zoneVisual}
-          centerMarker={center}
-          onPolygonChange={(p) => {
-            setPolygon(p);
-            if (p) setPlaceLabel("Zona dibujada (España)");
-            else if (locationMode === "draw") setPlaceLabel(null);
+          pickCenterMode={step === 0}
+          onMapCenterPick={(lng, lat) => {
+            setSelectedPinId(null);
+            applyScanCenter(lng, lat);
+            setFlyTo({ center: [lng, lat], zoom: 14 });
           }}
+          polygon={polygon}
+          zoneVisual="radius"
+          centerMarker={center}
           initialView={SPAIN_VIEW}
           autoFitPolygon={Boolean(polygon && step === 0)}
           pins={pins}
@@ -737,16 +727,14 @@ export default function NewScanPage() {
             setSelectedPinId(id);
             const pin = pins.find((x) => x.id === id);
             if (!pin) return;
-            if (locationMode === "search") {
-              setCenter({ lng: pin.lng, lat: pin.lat });
-              setPolygon(circlePolygon(pin.lng, pin.lat, radiusKm));
-              setPlaceLabel(
-                `Inmueble · ${pin.price.toLocaleString("es-ES")} €${
-                  pin.roi != null ? ` · ${pin.roi.toFixed(1)}% ROI` : ""
-                }`
-              );
-              setFlyTo({ center: [pin.lng, pin.lat], zoom: 15 });
-            }
+            applyScanCenter(
+              pin.lng,
+              pin.lat,
+              `Inmueble · ${pin.price.toLocaleString("es-ES")} €${
+                pin.roi != null ? ` · ${pin.roi.toFixed(1)}% ROI` : ""
+              }`
+            );
+            setFlyTo({ center: [pin.lng, pin.lat], zoom: 15 });
           }}
           onBboxChange={loadMap}
           flyTo={flyTo}

@@ -4,6 +4,7 @@ import { isResidentialPropertyKind } from "@/lib/listing/residential-kind";
 import { scanOperationUsesRoi } from "@/lib/investment/operations";
 import { applyBathroomFilter, applyBedroomFilter, type ScanRunFilters } from "@/lib/scan/bedroom-filter";
 import { listingMatchesScanFilters, normalizeScanFilters } from "@/lib/scan/apply-scan-filters";
+import { notifyScanCompleteIfRequested } from "@/lib/email/scan-complete";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ScanPolygon } from "@/lib/scan/types";
 
@@ -35,6 +36,7 @@ export async function runScanForPolygon(
   const ids = inPolyRows.map((r) => r.id);
   if (ids.length === 0) {
     await admin.from("scans").update({ status: "completed", progress_pct: 100 }).eq("id", scanId);
+    await notifyScanCompleteIfRequested(scanId);
     return 0;
   }
 
@@ -123,6 +125,25 @@ export async function runScanForPolygon(
     );
   }
 
+  const minZone = Number(process.env.SCAN_MIN_ZONE_LISTINGS ?? "40");
+  if (minZone > 0 && ids.length > 0) {
+    const { count: inZoneCount } = await admin
+      .from("listings")
+      .select("id", { count: "exact", head: true })
+      .in("id", ids)
+      .eq("status", "active")
+      .eq("operation", "sale");
+    if ((inZoneCount ?? 0) < minZone) {
+      await admin
+        .from("scans")
+        .update({
+          error_message: `Inventario bajo en zona (${inZoneCount ?? 0} ventas en polígono). El scan importó datos de portales; repite en 2–5 min o amplía el radio.`,
+        })
+        .eq("id", scanId);
+    }
+  }
+
   await admin.from("scans").update({ status: "completed", progress_pct: 100 }).eq("id", scanId);
+  await notifyScanCompleteIfRequested(scanId);
   return ranked.length;
 }

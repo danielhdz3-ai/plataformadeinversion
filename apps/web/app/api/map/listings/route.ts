@@ -1,4 +1,5 @@
 import { decodeListingTitle } from "@/lib/decode-html";
+import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { resolveListingGrossRoiPct } from "@/lib/listing/gross-roi";
 import { resolveRentEstMonthly } from "@/lib/listing/rent-est";
 import { isResidentialPropertyKind } from "@/lib/listing/residential-kind";
@@ -145,7 +146,10 @@ export async function GET(req: NextRequest) {
         thumbnailUrl: (m?.thumbnail_url as string) ?? null,
         bedrooms: (m?.bedrooms as number) ?? null,
         bathrooms: (m?.bathrooms as number) ?? null,
-        sqm: (m?.sqm as number) ?? null,
+        sqm: resolveListingSqm(
+          (m?.sqm as number) ?? null,
+          (m?.title as string) ?? null
+        ),
         rentEst: rent ?? null,
         scrapedAt: (m?.scraped_at as string) ?? null,
       };

@@ -1,0 +1,48 @@
+import { normalizeScanFilters } from "@/lib/scan/apply-scan-filters";
+import { runScanForPolygon } from "@/lib/scan/runScan";
+import { defaultPortalToggles, selectedPortals } from "@/lib/scan/portal-options";
+import { SCAN_ZONE_SOFT_WARN_BELOW } from "@/lib/scan/zone-target";
+import type { ScanZoneIngestResult } from "@/lib/scrape/prefetch-scan-zone.server";
+import type { ScanPolygon } from "@/lib/scan/types";
+import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+/** ROI + ranking tras importar inventario (Vercel o Actions). */
+export async function completeScanAfterIngest(
+  scanId: string,
+  polygon: ScanPolygon,
+  filters: ScanRunFilters,
+  operation: string,
+  ingest: Pick<
+    ScanZoneIngestResult,
+    "ok" | "error" | "inPolygonAfter" | "target" | "meetsTarget"
+  > = {}
+) {
+  const admin = createAdminClient();
+  await admin.from("scans").update({ progress_pct: 75 }).eq("id", scanId);
+  await runScanForPolygon(scanId, polygon, filters, operation);
+
+  if (
+    ingest.inPolygonAfter != null &&
+    ingest.target != null &&
+    !ingest.meetsTarget &&
+    ingest.inPolygonAfter < SCAN_ZONE_SOFT_WARN_BELOW
+  ) {
+    await admin
+      .from("scans")
+      .update({
+        error_message: `Zona con ${ingest.inPolygonAfter} ventas en mapa (objetivo ${ingest.target}). Repite el scan o amplía el radio.`,
+      })
+      .eq("id", scanId);
+  } else if (ingest.ok !== false && !ingest.error) {
+    await admin.from("scans").update({ error_message: null }).eq("id", scanId);
+  }
+}
+
+export function resolveScanPortals(filters: ScanRunFilters): string[] {
+  const norm = normalizeScanFilters(filters as Record<string, unknown>);
+  let portals = norm.sourcePortals;
+  if (!portals?.length) portals = selectedPortals(defaultPortalToggles());
+  if (!portals.includes("pisos_com")) portals = [...portals, "pisos_com"];
+  return portals;
+}

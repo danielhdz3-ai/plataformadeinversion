@@ -15,6 +15,7 @@ import { boundsFromPins, polygonBounds } from "@/lib/map/polygon-bounds";
 import { parseScanPolygon } from "@/lib/map/parse-scan-polygon";
 import { SPAIN_VIEW } from "@/lib/map/spain-bounds";
 import { scanOperationUsesRoi } from "@/lib/investment/operations";
+import { SCAN_ZONE_SOFT_WARN_BELOW, SCAN_ZONE_TARGET_IN_POLYGON } from "@/lib/scan/zone-target";
 import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useListingSummaries } from "@/lib/listing/use-listing-summaries";
@@ -61,6 +62,7 @@ function ScanResultsPageContent() {
   const [mapFallback, setMapFallback] = useState(false);
   const [flyTo, setFlyTo] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [scanErrorMessage, setScanErrorMessage] = useState<string | null>(null);
   const [scanFilters, setScanFilters] = useState<ScanRunFilters | null>(null);
   const [scanOperation, setScanOperation] = useState<string>("buy_to_rent");
   const usesRoi = scanOperationUsesRoi(scanOperation);
@@ -76,10 +78,16 @@ function ScanResultsPageContent() {
         }
         return;
       }
-      const scan = (await s.json()) as { status: string; polygon?: unknown; operation?: string };
+      const scan = (await s.json()) as {
+        status: string;
+        polygon?: unknown;
+        operation?: string;
+        error_message?: string | null;
+      };
       if (!cancelled) {
         setLoadError(null);
         setStatus(scan.status ?? "failed");
+        setScanErrorMessage(scan.error_message ?? null);
         setScanOperation(scan.operation ?? "buy_to_rent");
         if (scan.operation === "buy") setSort("price_asc");
         const parsedPoly = parseScanPolygon(scan.polygon);
@@ -88,8 +96,12 @@ function ScanResultsPageContent() {
       const r = await fetch(`/api/scans/${id}/results`);
       if (!r.ok) {
         if (!cancelled && s.ok) {
-          setLoadError("No se pudieron cargar los resultados.");
-          if (scan.status !== "completed") setStatus("failed");
+          const stillRunning = scan.status === "running" || scan.status === "pending";
+          if (stillRunning) {
+            setLoadError(null);
+          } else {
+            setLoadError("No se pudieron cargar los resultados.");
+          }
         }
         return;
       }
@@ -181,6 +193,7 @@ function ScanResultsPageContent() {
     setSummaryMode(scanOperation === "buy_to_rent_rooms" ? "rooms" : "whole");
   }, [scanOperation, id]);
   const { summaries, loading: summariesLoading } = useListingSummaries(listingIds, {
+    detailId: selected,
     mode: summaryMode,
   });
 
@@ -349,7 +362,14 @@ function ScanResultsPageContent() {
           )}
           {status === "failed" && !loadError && (
             <p className="mx-3 mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-900">
-              El scan falló. Repite con otra zona o filtros más amplios.
+              {scanErrorMessage
+                ? scanErrorMessage
+                : "El scan falló. Repite con otra zona o filtros más amplios."}
+            </p>
+          )}
+          {status === "completed" && scanErrorMessage && (
+            <p className="mx-3 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+              {scanErrorMessage}
             </p>
           )}
           <AppPanelHeader
@@ -384,6 +404,13 @@ function ScanResultsPageContent() {
               <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600">
                 Sin resultados en inventario para esta zona y rango de precio. Prueba «Modo rango de precio de
                 compra» (p. ej. 120 000–130 000 €), amplía el radio o repite el scan.
+              </p>
+            )}
+            {zoneTotal > 0 && zoneTotal < SCAN_ZONE_SOFT_WARN_BELOW && status === "completed" && (
+              <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-950">
+                {zoneTotal} ventas en el mapa (objetivo ~{SCAN_ZONE_TARGET_IN_POLYGON} por búsqueda). Cada scan
+                importa Fotocasa y pisos.com del barrio; repite el scan o sube el radio a 2–3 km si acabas de
+                empezar.
               </p>
             )}
             {sortedRows.map((row) => (

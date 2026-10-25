@@ -375,11 +375,68 @@ export function ListingResumenPanel({
 
         <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
 
-          Datos demográficos
+          Datos demográficos (INE)
 
         </h4>
 
-        <p className="mt-1 text-neutral-600">{summary.demographics.note}</p>
+        {"note" in summary.demographics ? (
+          <p className="mt-1 text-neutral-600">{summary.demographics.note}</p>
+        ) : (
+          <>
+            <p className="mt-1 text-[10px] text-neutral-500">
+              Sección {summary.demographics.cusec}
+              {summary.demographics.sectionName ? ` · ${summary.demographics.sectionName}` : ""}
+              {summary.demographics.metricsYear ? ` · ${summary.demographics.metricsYear}` : ""}
+            </p>
+            <dl className="mt-1.5 space-y-1">
+              <Row
+                label="Población"
+                value={
+                  summary.demographics.population != null
+                    ? fmt(summary.demographics.population)
+                    : "—"
+                }
+              />
+              <Row
+                label="Renta neta media (€)"
+                value={
+                  summary.demographics.meanNetIncomeEur != null
+                    ? fmt(summary.demographics.meanNetIncomeEur)
+                    : "—"
+                }
+              />
+              <Row
+                label="Educación superior (%)"
+                value={
+                  summary.demographics.tertiaryEducationPct != null
+                    ? `${fmt(summary.demographics.tertiaryEducationPct, 1)} %`
+                    : "—"
+                }
+              />
+              <Row
+                label="Paro (%)"
+                value={
+                  summary.demographics.unemploymentPct != null
+                    ? `${fmt(summary.demographics.unemploymentPct, 1)} %`
+                    : "—"
+                }
+              />
+            </dl>
+            {summary.demographics.sourceUrl && (
+              <p className="mt-1 text-[10px] text-neutral-500">
+                Fuente:{" "}
+                <a
+                  href={summary.demographics.sourceUrl}
+                  className="underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  INE
+                </a>
+              </p>
+            )}
+          </>
+        )}
 
       </section>
 

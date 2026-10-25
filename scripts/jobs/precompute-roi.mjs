@@ -4,12 +4,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { capRentEstForSalePrice } from "../scrapers/lib/rent-cap.mjs";
 import { isPlausibleMonthlyRent } from "../scrapers/lib/rent-plausible.mjs";
+import { listCities } from "../scrapers/lib/spain-city.mjs";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!url || !key) process.exit(1);
 
 const supabase = createClient(url, key);
+const cityCatalog = listCities();
 
 const CONCURRENCY = Math.min(12, Math.max(1, Number(process.env.ROI_CONCURRENCY ?? "6")));
 const maxSalesEnv = process.env.ROI_PRECOMPUTE_BATCH;
@@ -36,6 +38,36 @@ async function loadAllRentComps() {
     if (data.length < page) break;
   }
   return all;
+}
+
+async function loadRentBenchmarks() {
+  const { data, error } = await supabase.from("rent_benchmarks").select("city_slug, eur_per_sqm_month");
+  if (error) {
+    console.warn("rent_benchmarks", error.message);
+    return new Map();
+  }
+  return new Map((data ?? []).map((r) => [r.city_slug, Number(r.eur_per_sqm_month)]));
+}
+
+function citySlugFromListing(cityText) {
+  if (!cityText) return null;
+  const lower = cityText.toLowerCase();
+  for (const city of cityCatalog) {
+    const filter = (city.regionPattern ?? city.name.split(" ")[0] ?? city.name).toLowerCase();
+    if (lower.includes(filter)) return city.slug;
+  }
+  return null;
+}
+
+function benchmarkRent(sale, benchmarkMap) {
+  const slug = citySlugFromListing(sale.city);
+  if (!slug) return null;
+  const eurSqm = benchmarkMap.get(slug);
+  const sqm = Number(sale.sqm);
+  if (!eurSqm || !Number.isFinite(sqm) || sqm < 12) return null;
+  let rentEst = capRentEstForSalePrice(Math.round(sqm * eurSqm * 0.85), Number(sale.price));
+  if (rentEst == null) return null;
+  return { rentEst, confidence: "low", comparablesCount: 0 };
 }
 
 function heuristicRent(sale, compsGlobal) {
@@ -77,7 +109,7 @@ async function upsertInvestment(saleId, price, rentEst, confidence, comparablesC
   return !upErr;
 }
 
-async function computeOne(sale, globalRents) {
+async function computeOne(sale, globalRents, benchmarkMap) {
   const price = Number(sale.price);
   if (!Number.isFinite(price) || price < 25_000) return { ok: false };
 
@@ -96,6 +128,18 @@ async function computeOne(sale, globalRents) {
     const confidence = near.length >= 8 ? "high" : near.length >= 4 ? "medium" : "low";
     const ok = await upsertInvestment(sale.id, price, rentEst, confidence, near.length);
     return { ok, spatial: true };
+  }
+
+  const r0 = benchmarkRent(sale, benchmarkMap);
+  if (r0) {
+    const ok = await upsertInvestment(
+      sale.id,
+      price,
+      r0.rentEst,
+      r0.confidence,
+      r0.comparablesCount
+    );
+    return { ok, spatial: false, r0: true };
   }
 
   const h = heuristicRent(sale, globalRents);
@@ -118,8 +162,10 @@ async function mapPool(items, fn, limit) {
 }
 
 const globalRents = await loadAllRentComps();
+const benchmarkMap = await loadRentBenchmarks();
 let updated = 0;
 let spatial = 0;
+let r0Count = 0;
 let salesTotal = 0;
 let offset = 0;
 const page = 200;
@@ -128,7 +174,7 @@ while (salesTotal < maxSales) {
   const pageSize = Math.min(page, maxSales - salesTotal);
   const { data: sales, error } = await supabase
     .from("listings")
-    .select("id, price, sqm, bedrooms")
+    .select("id, price, sqm, bedrooms, city")
     .eq("operation", "sale")
     .eq("status", "active")
     .order("id")
@@ -138,11 +184,16 @@ while (salesTotal < maxSales) {
   if (!sales?.length) break;
   salesTotal += sales.length;
 
-  const outcomes = await mapPool(sales, (s) => computeOne(s, globalRents), CONCURRENCY);
+  const outcomes = await mapPool(
+    sales,
+    (s) => computeOne(s, globalRents, benchmarkMap),
+    CONCURRENCY
+  );
   for (const o of outcomes) {
     if (o?.ok) {
       updated++;
       if (o.spatial) spatial++;
+      if (o.r0) r0Count++;
     }
   }
 
@@ -157,6 +208,8 @@ console.log(
     updated,
     spatial,
     rentCompsLoaded: globalRents.length,
+    rentBenchmarkCities: benchmarkMap.size,
+    r0Estimates: r0Count,
     concurrency: CONCURRENCY,
   })
 );

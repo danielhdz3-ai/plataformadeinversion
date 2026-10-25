@@ -7,8 +7,8 @@ import {
 import { PremiumListingCard } from "@/components/listings/PremiumListingCard";
 import { pinFallbackListing } from "@/lib/listing/resolve-side-panel-listing";
 import { useListingSummaries } from "@/lib/listing/use-listing-summaries";
-import { CoverageLegend } from "@/components/map/CoverageLegend";
 import { RoiScanMap } from "@/components/map/RoiScanMapLazy";
+import type { MapFeatureCollection } from "@/lib/map/geojson-types";
 import { SPAIN_VIEW } from "@/lib/map/spain-bounds";
 import { decodeListingTitle } from "@/lib/decode-html";
 import { AppPanelHeader } from "@/components/app/AppPanelHeader";
@@ -43,6 +43,13 @@ function ExplorarPageContent() {
   const lastBboxRef = useRef<[number, number, number, number] | null>(null);
   const [requestSent, setRequestSent] = useState(false);
   const [summaryMode, setSummaryMode] = useState<"whole" | "rooms">("whole");
+  const [showIneLayer, setShowIneLayer] = useState(false);
+  const [censusOverlay, setCensusOverlay] = useState<MapFeatureCollection | null>(null);
+  const lastZoomRef = useRef(12);
+  const [cpQuery, setCpQuery] = useState("");
+  const [cpLoading, setCpLoading] = useState(false);
+  const [cpSummary, setCpSummary] = useState<string | null>(null);
+  const [flyTo, setFlyTo] = useState<{ center: [number, number]; zoom: number } | null>(null);
 
   useEffect(() => {
     const lid = searchParams.get("listing");
@@ -54,17 +61,116 @@ function ExplorarPageContent() {
     [selected]
   );
 
-  const loadMap = useCallback(async (bbox: [number, number, number, number], meta?: { zoom: number }) => {
-    lastBboxRef.current = bbox;
-    const [minLng, minLat, maxLng, maxLat] = bbox;
-    const zoomQ = meta?.zoom != null ? `&zoom=${meta.zoom}` : "";
-    const res = await fetch(
-      `/api/map/listings?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}${zoomQ}`
-    );
-    if (!res.ok) return;
-    const data = (await res.json()) as { features: ListingPin[] };
-    setListings(data.features ?? []);
-  }, []);
+  const loadCensus = useCallback(
+    async (bbox: [number, number, number, number], zoom: number) => {
+      if (!showIneLayer || zoom < 11) {
+        setCensusOverlay(null);
+        return;
+      }
+      const [minLng, minLat, maxLng, maxLat] = bbox;
+      const res = await fetch(
+        `/api/map/census-sections?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}&zoom=${zoom}`
+      );
+      if (!res.ok) {
+        setCensusOverlay(null);
+        return;
+      }
+      const data = (await res.json()) as MapFeatureCollection;
+      setCensusOverlay(data.features?.length ? data : null);
+    },
+    [showIneLayer]
+  );
+
+  const loadByPostalCode = useCallback(async () => {
+    const cp = cpQuery.replace(/\D/g, "").slice(0, 5);
+    if (cp.length !== 5) return;
+    setCpLoading(true);
+    setCpSummary(null);
+    try {
+      const applyPayload = (data: {
+        features?: ListingPin[];
+        total?: number;
+        byPortal?: Record<string, number>;
+        center?: { lat: number; lng: number };
+      }) => {
+        const feats = data.features ?? [];
+        setListings(feats);
+        if (data.center) {
+          setFlyTo({ center: [data.center.lng, data.center.lat], zoom: 14 });
+        }
+        const parts = data.byPortal
+          ? Object.entries(data.byPortal)
+              .sort((a, b) => b[1] - a[1])
+              .map(([p, n]) => `${p} ${n}`)
+              .join(" · ")
+          : "";
+        setCpSummary(
+          `${data.total ?? feats.length} ventas CP ${cp}${parts ? ` · ${parts}` : ""}`
+        );
+      };
+
+      setCpSummary("Importando portales en segundo plano…");
+      const kick = await fetch(`/api/map/listings-by-cp?cp=${cp}&max=800&live=1&wait=0`);
+      const kickData = (await kick.json()) as {
+        features?: ListingPin[];
+        total?: number;
+        byPortal?: Record<string, number>;
+        center?: { lat: number; lng: number };
+        error?: string;
+        refreshStarted?: boolean;
+      };
+      if (!kick.ok) {
+        setCpSummary(kickData.error ?? "Error al cargar CP");
+        return;
+      }
+      applyPayload(kickData);
+
+      if (kickData.refreshStarted) {
+        let lastTotal = kickData.total ?? 0;
+        for (let i = 0; i < 24; i++) {
+          await new Promise((r) => setTimeout(r, 15_000));
+          setCpSummary(`Importando portales… (${(i + 1) * 15}s)`);
+          const poll = await fetch(`/api/map/listings-by-cp?cp=${cp}&max=800&live=0`);
+          const pollData = (await poll.json()) as typeof kickData;
+          if (!poll.ok) continue;
+          applyPayload(pollData);
+          const t = pollData.total ?? 0;
+          if (t > lastTotal + 5) lastTotal = t;
+          if (i >= 3 && t >= 40) break;
+        }
+        setCpSummary(`${lastTotal}+ ventas CP ${cp} · importación en curso en servidor`);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Error";
+      setCpSummary(msg);
+    } finally {
+      setCpLoading(false);
+    }
+  }, [cpQuery]);
+
+  const loadMap = useCallback(
+    async (bbox: [number, number, number, number], meta?: { zoom: number }) => {
+      lastBboxRef.current = bbox;
+      const zoom = meta?.zoom ?? lastZoomRef.current;
+      if (meta?.zoom != null) lastZoomRef.current = meta.zoom;
+      const [minLng, minLat, maxLng, maxLat] = bbox;
+      const zoomQ = meta?.zoom != null ? `&zoom=${meta.zoom}` : "";
+      const res = await fetch(
+        `/api/map/listings?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}${zoomQ}`
+      );
+      if (res.ok) {
+        const data = (await res.json()) as { features: ListingPin[] };
+        setListings(data.features ?? []);
+      }
+      void loadCensus(bbox, zoom);
+    },
+    [loadCensus]
+  );
+
+  useEffect(() => {
+    const bbox = lastBboxRef.current;
+    if (bbox) void loadCensus(bbox, lastZoomRef.current);
+  }, [showIneLayer, loadCensus]);
 
   const portalSummary = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -97,6 +203,7 @@ function ExplorarPageContent() {
   }, [listings, selected]);
   const { summaries, loading: summariesLoading } = useListingSummaries(listingIds, {
     mode: summaryMode,
+    detailId: selected,
   });
 
   const roiPins = useMemo(
@@ -158,6 +265,39 @@ function ExplorarPageContent() {
           }
         />
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={5}
+              placeholder="CP (ej. 28033)"
+              value={cpQuery}
+              onChange={(e) => setCpQuery(e.target.value.replace(/\D/g, "").slice(0, 5))}
+              className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              disabled={cpQuery.length !== 5 || cpLoading}
+              onClick={() => void loadByPostalCode()}
+              className="shrink-0 rounded-lg bg-neutral-950 px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
+            >
+              {cpLoading ? "Importando…" : "Buscar CP"}
+            </button>
+          </div>
+          {cpSummary && (
+            <p className="text-xs text-neutral-700">
+              {cpSummary} — scrape en vivo (España), no inventario antiguo
+            </p>
+          )}
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-800">
+            <input
+              type="checkbox"
+              checked={showIneLayer}
+              onChange={(e) => setShowIneLayer(e.target.checked)}
+              className="accent-violet-700"
+            />
+            Capa INE (secciones censales) — zoom ≥ 11 · piloto Barcelona
+          </label>
           {listings.length === 0 && (
             <div className="rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-600">
               <p>
@@ -201,14 +341,15 @@ function ExplorarPageContent() {
         </div>
       </aside>
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-        <CoverageLegend className="absolute bottom-3 left-3 z-10 max-w-[min(100%-1.5rem,28rem)]" />
         <RoiScanMap
           pins={roiPins}
           selectedId={selected}
           onSelectPin={setSelected}
           onBboxChange={loadMap}
+          flyTo={flyTo}
           initialView={SPAIN_VIEW}
-          maxPins={64}
+          maxPins={200}
+          censusOverlay={censusOverlay}
           className="absolute inset-0 h-full w-full"
         />
       </div>

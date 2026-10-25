@@ -1,13 +1,24 @@
 import { isOpenAccess } from "@/lib/open-access";
-import { prefetchScanZoneInventory } from "@/lib/scrape/prefetch-scan-zone.server";
-import { runScanForPolygon } from "@/lib/scan/runScan";
+import {
+  completeScanAfterIngest,
+  resolveScanPortals,
+} from "@/lib/scan/complete-scan-after-ingest";
+import {
+  shouldOffloadScanIngestToActions,
+  triggerScanZoneIngestWorkflow,
+} from "@/lib/scan/trigger-zone-ingest-workflow.server";
+import { normalizeScanFilters } from "@/lib/scan/apply-scan-filters";
 import type { ScanPolygon } from "@/lib/scan/types";
 import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
+import {
+  prefetchScanZoneInventory,
+  precomputeRoiForPolygon,
+} from "@/lib/scrape/prefetch-scan-zone.server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDbClient, requireAppUser } from "@/lib/supabase/request-client";
 import { after, NextResponse } from "next/server";
 
-/** Prefetch de portales puede tardar 1–3 min (barrios cercanos al radio del scan). */
+/** Importación por barrio (Fotocasa + pisos.com) puede tardar varios minutos. */
 export const maxDuration = 300;
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -35,29 +46,89 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const polygon = scanRow.polygon as ScanPolygon;
   const filters = (scanRow.filters ?? {}) as ScanRunFilters;
+  normalizeScanFilters(filters as Record<string, unknown>);
+  const portals = resolveScanPortals(filters);
 
   await supabase.from("scans").update({ status: "running", progress_pct: 5 }).eq("id", id);
+
+  if (shouldOffloadScanIngestToActions()) {
+    const dispatched = await triggerScanZoneIngestWorkflow(id);
+    if (dispatched) {
+      await supabase
+        .from("scans")
+        .update({
+          progress_pct: 10,
+          error_message: "Importación en GitHub Actions (hasta ~90 min). Esta página se actualiza sola.",
+        })
+        .eq("id", id);
+      return NextResponse.json({ ok: true, status: "running", ingest: "github_actions" }, { status: 202 });
+    }
+    console.warn("scan ingest Actions dispatch failed, falling back to Vercel after()");
+  }
 
   after(async () => {
     const admin = createAdminClient();
     try {
-      await admin.from("scans").update({ progress_pct: 12 }).eq("id", id);
-      try {
-        const prefetch = await prefetchScanZoneInventory(polygon);
-        console.info("scan prefetch", id, prefetch);
-      } catch (prefetchErr) {
-        console.warn("scan prefetch failed (continuing)", id, prefetchErr);
-      }
-      await admin.from("scans").update({ progress_pct: 45 }).eq("id", id);
-      await runScanForPolygon(id, polygon, filters, scanRow.operation ?? "buy_to_rent");
-    } catch (e) {
       await admin
         .from("scans")
-        .update({ status: "failed", progress_pct: 0 })
+        .update({ progress_pct: 15, error_message: "Importando anuncios del barrio (portales)…" })
+        .eq("id", id);
+
+      let ingest: Awaited<ReturnType<typeof prefetchScanZoneInventory>> = {
+        ok: false,
+        reason: "not_started",
+      };
+      try {
+        ingest = await prefetchScanZoneInventory(polygon, { scanId: id, portals });
+        console.info("zone ingest", id, ingest);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        ingest = { ok: false, error: msg };
+        console.error("zone ingest throw", id, e);
+        await admin
+          .from("scans")
+          .update({
+            error_message: `Importación interrumpida (${msg}). Ranking con inventario ya en base de datos…`,
+          })
+          .eq("id", id);
+      }
+
+      if (!ingest.ok && ingest.error) {
+        await admin
+          .from("scans")
+          .update({
+            error_message: `Importación parcial: ${ingest.error}. Se continúa con datos existentes.`,
+          })
+          .eq("id", id);
+      }
+
+      await admin.from("scans").update({ progress_pct: 55 }).eq("id", id);
+      try {
+        precomputeRoiForPolygon(polygon);
+      } catch (e) {
+        console.warn("precompute roi skipped", id, e);
+      }
+
+      await completeScanAfterIngest(
+        id,
+        polygon,
+        filters,
+        scanRow.operation ?? "buy_to_rent",
+        ingest
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await admin
+        .from("scans")
+        .update({
+          status: "failed",
+          progress_pct: 0,
+          error_message: msg.slice(0, 480) || "Error en scan",
+        })
         .eq("id", id);
       console.error("scan run failed", id, e);
     }
   });
 
-  return NextResponse.json({ ok: true, status: "running" }, { status: 202 });
+  return NextResponse.json({ ok: true, status: "running", ingest: "vercel" }, { status: 202 });
 }

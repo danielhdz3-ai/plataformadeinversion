@@ -141,8 +141,10 @@ export async function fetchPisosDetailFields(sourceUrl) {
   const price = euro.length ? Math.max(...euro) : null;
   const sqmM = html.match(/(\d{2,3})\s*m²/i);
   const sqm = sqmM ? Number(sqmM[1]) : null;
+  const cpM = html.match(/\b(0[1-9]\d{3}|[1-4]\d{4}|5[0-2]\d{3})\b/);
   return {
     price,
     sqm: Number.isFinite(sqm) && sqm >= 15 && sqm <= 2000 ? sqm : null,
+    postalCode: cpM ? cpM[1] : null,
   };
 }

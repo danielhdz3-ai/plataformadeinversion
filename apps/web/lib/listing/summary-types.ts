@@ -1,3 +1,4 @@
+import type { ListingCensusSection } from "@/lib/listing/census-types";
 import type { RoomRentComparable } from "@/lib/listing/room-rent";
 import type { NotaryPortalStats } from "@/lib/notariado/types";
 
@@ -55,7 +56,7 @@ export type ListingSummary = {
     saleChangePct: number;
     rentChangePct: number;
   };
-  demographics: { note: string };
+  demographics: ListingCensusSection | { note: string };
   localDevelopments: readonly {
     title: string;
     category: string;

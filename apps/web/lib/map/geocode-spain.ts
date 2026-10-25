@@ -82,6 +82,33 @@ function postcodeMatches(item: NominatimItem, postal: string) {
   return item.display_name.includes(postal);
 }
 
+async function zippopotamPostalHit(postal: string): Promise<GeocodeHit | null> {
+  try {
+    const res = await fetch(`https://api.zippopotam.us/ES/${postal}`, {
+      next: { revalidate: 604800 },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      places?: { "place name"?: string; latitude?: string; longitude?: string; state?: string }[];
+    };
+    const place = data.places?.[0];
+    if (!place?.latitude || !place.longitude) return null;
+    const lat = Number(place.latitude);
+    const lng = Number(place.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inSpain(lng, lat)) return null;
+    const name = place["place name"] ?? "España";
+    const region = place.state ?? "";
+    return {
+      label: [`CP ${postal}`, name, region, "España"].filter(Boolean).join(", "),
+      lat,
+      lng,
+      bbox: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function nominatimFetch(params: Record<string, string>) {
   const url = new URL("https://nominatim.openstreetmap.org/search");
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
@@ -132,6 +159,9 @@ export async function geocodeSpainQuery(q: string): Promise<GeocodeHit[]> {
     if (hits.length > 0) {
       return hits.filter((r) => inSpain(r.lng, r.lat)).slice(0, 8);
     }
+
+    const zipHit = await zippopotamPostalHit(postal);
+    if (zipHit) return [zipHit];
   }
 
   const query = /\bespaña\b|\bspain\b/i.test(q) ? q : `${q}, España`;

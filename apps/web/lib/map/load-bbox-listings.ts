@@ -37,13 +37,12 @@ export async function loadMapListingsInBbox(
   supabase: SupabaseClient,
   bbox: { minLng: number; minLat: number; maxLng: number; maxLat: number }
 ): Promise<{ rows: MapBboxRow[]; error?: string }> {
-  const perPortal = Math.max(40, Math.ceil(MAP_LISTINGS_LIMIT / MAP_PORTALS.length));
-  const base: RpcArgs = {
-    min_lng: bbox.minLng,
-    min_lat: bbox.minLat,
-    max_lng: bbox.maxLng,
-    max_lat: bbox.maxLat,
-    max_rows: perPortal,
+  const defaultPerPortal = Math.max(40, Math.ceil(MAP_LISTINGS_LIMIT / MAP_PORTALS.length));
+  /** Más cupo a pisos.com / Kelify (suelen concentrar precios bajos). */
+  const portalRowCap = (portal: string) => {
+    if (portal === "pisos_com") return Math.max(defaultPerPortal, 140);
+    if (portal === "kelify") return Math.max(defaultPerPortal, 100);
+    return defaultPerPortal;
   };
 
   const merged = new Map<string, MapBboxRow>();
@@ -52,7 +51,11 @@ export async function loadMapListingsInBbox(
   const batches = await Promise.all(
     MAP_PORTALS.map(async (portal) => {
       const { data, error } = await supabase.rpc("map_listings_in_bbox", {
-        ...base,
+        min_lng: bbox.minLng,
+        min_lat: bbox.minLat,
+        max_lng: bbox.maxLng,
+        max_lat: bbox.maxLat,
+        max_rows: portalRowCap(portal),
         portal_filter: portal,
       });
       return { portal, data, error };
@@ -77,10 +80,10 @@ export async function loadMapListingsInBbox(
 
   if (portalFilterMissing) {
     const { data, error } = await supabase.rpc("map_listings_in_bbox", {
-      min_lng: base.min_lng,
-      min_lat: base.min_lat,
-      max_lng: base.max_lng,
-      max_lat: base.max_lat,
+      min_lng: bbox.minLng,
+      min_lat: bbox.minLat,
+      max_lng: bbox.maxLng,
+      max_lat: bbox.maxLat,
       max_rows: MAP_LISTINGS_FETCH,
     });
     if (error) return { rows: [], error: error.message };

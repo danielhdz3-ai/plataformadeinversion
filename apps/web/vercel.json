@@ -1,5 +1,15 @@
 {
   "installCommand": "cd ../.. && pnpm install",
   "buildCommand": "cd ../.. && pnpm --filter @pi/roi-engine build && pnpm --filter @pi/web build",
-  "crons": [{ "path": "/api/cron/scrape-bank-portals", "schedule": "0 3 * * *" }]
+  "crons": [{ "path": "/api/cron/scrape-bank-portals", "schedule": "0 3 * * *" }],
+  "functions": {
+    "app/api/map/listings-by-cp/route.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/scraper-runtime/**"
+    },
+    "app/api/scans/[id]/run/route.ts": {
+      "maxDuration": 300,
+      "includeFiles": "lib/scraper-runtime/**"
+    }
+  }
 }

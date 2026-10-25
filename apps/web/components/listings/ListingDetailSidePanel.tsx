@@ -7,6 +7,7 @@ import { NeighborhoodGauge } from "@/components/listings/NeighborhoodGauge";
 import { RoomRentComparablesPanel } from "@/components/listings/RoomRentComparablesPanel";
 import { NotariadoPortalPanel } from "@/components/notariado/NotariadoPortalPanel";
 import { decodeListingTitle } from "@/lib/decode-html";
+import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import type { ListingSummary } from "@/lib/listing/summary-types";
 import { portalBadge } from "@/lib/portals";
 import { SaveListingButton } from "@/components/listings/SaveListingButton";
@@ -141,10 +142,11 @@ export function ListingDetailSidePanel({
   const portal = portalBadge(resolved.sourcePortal);
   const title = decodeListingTitle(resolved.title ?? "Inmueble");
   const imgSrc = proxiedThumb(resolved.thumbnailUrl);
+  const effectiveSqm = resolveListingSqm(resolved.sqm, resolved.title);
   const specs = [
     resolved.bedrooms != null ? `${resolved.bedrooms} hab.` : null,
     resolved.bathrooms != null ? `${resolved.bathrooms} baños` : null,
-    resolved.sqm != null ? `${resolved.sqm} m²` : null,
+    effectiveSqm != null ? `${effectiveSqm} m²` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -256,6 +258,9 @@ export function ListingDetailSidePanel({
             )}
             {summary && (
               <ListingResumenPanel summary={summary} listingId={resolved.id} embedded showAi={false} />
+            )}
+            {summaryLoading && summary && (
+              <p className="px-4 pt-2 text-[10px] text-neutral-400">Completando comparables y datos INE…</p>
             )}
             {!summaryLoading && !summary && (
               <p className="p-4 text-xs text-neutral-500">No hay métricas de mercado para este anuncio.</p>

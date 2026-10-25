@@ -1,0 +1,43 @@
+name: Scrape tier1 cities
+on:
+  schedule:
+    - cron: "15 5,17 * * *"
+  workflow_dispatch:
+
+jobs:
+  pisos:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        city:
+          - barcelona
+          - madrid
+          - valencia
+          - sevilla
+          - malaga
+          - bilbao
+          - zaragoza
+          - murcia
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install @supabase/supabase-js
+      - name: Sale
+        run: node scripts/scrapers/pisos-sale-city.mjs
+        env:
+          CITY_SLUG: ${{ matrix.city }}
+          MAX_LISTINGS: "500"
+          PISOS_MAX_PAGES: "40"
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Rent
+        run: node scripts/scrapers/pisos-rent-city.mjs
+        env:
+          CITY_SLUG: ${{ matrix.city }}
+          MAX_LISTINGS: "120"
+          PISOS_MAX_PAGES: "20"
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
