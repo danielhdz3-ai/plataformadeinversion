@@ -6,6 +6,7 @@ import { applyBathroomFilter, applyBedroomFilter, type ScanRunFilters } from "@/
 import { listingMatchesScanFilters, normalizeScanFilters } from "@/lib/scan/apply-scan-filters";
 import { notifyScanCompleteIfRequested } from "@/lib/email/scan-complete";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { parseScanPolygon } from "@/lib/map/parse-scan-polygon";
 import type { ScanPolygon } from "@/lib/scan/types";
 
 export async function runScanForPolygon(
@@ -24,7 +25,8 @@ export async function runScanForPolygon(
     throw new Error("Filtros de precio inválidos");
   }
 
-  const geojson = JSON.stringify(polygon);
+  const poly = parseScanPolygon(polygon) ?? polygon;
+  const geojson = JSON.stringify(poly);
   const { data: inPoly, error: polyErr } = await admin.rpc("listings_in_polygon", {
     geojson,
   });

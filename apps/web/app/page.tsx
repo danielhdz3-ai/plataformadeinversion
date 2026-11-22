@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 export default function LandingPage() {
   if (process.env.NEXT_PUBLIC_OPEN_ACCESS === "1") {
-    redirect("/app/scan/nuevo");
+    redirect("/app/oportunidades");
   }
 
   return (
@@ -17,10 +17,16 @@ export default function LandingPage() {
       </p>
       <div className="flex flex-wrap gap-4">
         <Link
+          href="/app/oportunidades"
+          className="rounded-lg bg-orange-600 px-6 py-3 font-medium text-white hover:bg-orange-700"
+        >
+          Ver oportunidades
+        </Link>
+        <Link
           href="/app/scan/nuevo"
           className="rounded-lg bg-neutral-950 px-6 py-3 font-medium text-white hover:bg-neutral-800"
         >
-          Entrar a la plataforma
+          Nuevo scan ROI
         </Link>
         <Link
           href="/app/explorar"

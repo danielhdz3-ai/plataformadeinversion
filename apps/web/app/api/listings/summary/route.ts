@@ -2,7 +2,7 @@ import { parseCensusRpcRow } from "@/lib/listing/census-types";
 import { buildListingSummary } from "@/lib/listing/build-summary";
 import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { resolveListingGrossRoiPct } from "@/lib/listing/gross-roi";
-import { NOTARY_NATIONAL_POSTAL } from "@/lib/notariado/resolve-notary";
+import { notaryRowForListingValuation } from "@/lib/listing/notary-valuation-scope";
 import { fetchOfficialMarketForPostals } from "@/lib/listing/official-market-query";
 import { fetchItpPctForCcaa } from "@/lib/listing/tax-itp";
 import type { RentComparable } from "@/lib/listing/summary-types";
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     .select(
       `
       id, price, sqm, title, bedrooms, postal_code, city, ccaa,
+      source_portal, source_url, scraped_at,
       listing_investment ( rent_est, roi_gross, rent_confidence, comparables_count )
     `
     )
@@ -41,24 +42,21 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const postals = [...new Set((listings ?? []).map((l) => l.postal_code).filter(Boolean))] as string[];
-  const notaryLookupCodes = [...new Set([...postals, NOTARY_NATIONAL_POSTAL])];
   const notaryByPostal = new Map<string, Record<string, unknown>>();
 
-  if (notaryLookupCodes.length > 0) {
+  if (postals.length > 0) {
     const { data: notaryRows } = await supabase
       .from("notary_stats")
       .select("*")
-      .in("postal_code", notaryLookupCodes);
+      .in("postal_code", postals);
     for (const n of notaryRows ?? []) {
       const pc = n.postal_code as string;
       if (!notaryByPostal.has(pc)) notaryByPostal.set(pc, n);
     }
   }
 
-  const nationalNotary = notaryByPostal.get(NOTARY_NATIONAL_POSTAL) ?? null;
   function notaryForListing(postal: string | null | undefined) {
-    if (postal && notaryByPostal.has(postal)) return notaryByPostal.get(postal)!;
-    return nationalNotary;
+    return notaryRowForListingValuation(postal, notaryByPostal);
   }
 
   const officialByPostal = await fetchOfficialMarketForPostals(

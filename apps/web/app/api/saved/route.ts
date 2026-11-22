@@ -11,7 +11,9 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("saved_deals")
-    .select("id, listing:listings(id, title, price, source_url)")
+    .select(
+      "id, listing:listings(id, title, price, source_url, source_portal, bedrooms, bathrooms, sqm, city, listing_investment(rent_est, rent_confidence, roi_gross))"
+    )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 

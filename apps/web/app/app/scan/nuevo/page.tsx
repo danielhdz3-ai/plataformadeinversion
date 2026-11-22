@@ -25,8 +25,10 @@ import { DEMO_POLYGON } from "@/lib/scan/demo-polygon";
 import type { ScanPolygon } from "@/lib/scan/types";
 import { maxPurchasePriceFromCash } from "@pi/roi-engine";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { SpainLocationSearch } from "@/components/location/SpainLocationSearch";
+import { filtersFromUrlSearchParams } from "@/lib/filters/url-sync";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Pin = { id: string; lng: number; lat: number; roi: number | null; price: number };
 type GeocodeHit = { label: string; lat: number; lng: number; bbox: [number, number, number, number] | null };
@@ -34,12 +36,27 @@ type GeocodeHit = { label: string; lat: number; lng: number; bbox: [number, numb
 type FilterMode = "entry_budget" | "price_range";
 
 export default function NewScanPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center p-8 text-sm text-neutral-600">
+          Cargando asistente de scan…
+        </div>
+      }
+    >
+      <NewScanPageContent />
+    </Suspense>
+  );
+}
+
+function NewScanPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlFiltersReady = useRef(false);
   const [step, setStep] = useState(0);
   const [pins, setPins] = useState<Pin[]>([]);
   const [polygon, setPolygon] = useState<ScanPolygon | null>(null);
   const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<GeocodeHit[]>([]);
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [center, setCenter] = useState<{ lng: number; lat: number } | null>(null);
   const [radiusKm, setRadiusKm] = useState(2);
@@ -80,6 +97,8 @@ export default function NewScanPage() {
   const [onlyWithRoi, setOnlyWithRoi] = useState(false);
 
   const visibleBboxRef = useRef<[number, number, number, number] | null>(null);
+  const stepRef = useRef(step);
+  stepRef.current = step;
 
   const zoneReady = Boolean(center && polygon);
 
@@ -113,20 +132,41 @@ export default function NewScanPage() {
   }, [center, radiusKm]);
 
   useEffect(() => {
-    if (query.trim().length < 2) {
-      setSuggestions([]);
-      return;
+    if (urlFiltersReady.current) return;
+    urlFiltersReady.current = true;
+    const fromUrl = filtersFromUrlSearchParams(searchParams);
+    if (fromUrl.priceMin != null && fromUrl.priceMin > 0) {
+      setFinance((f) => ({ ...f, priceMin: fromUrl.priceMin! }));
     }
-    const t = setTimeout(async () => {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query.trim())}`);
+    if (fromUrl.priceMax != null && fromUrl.priceMax > 0 && fromUrl.priceMax < 2_000_000) {
+      setFinance((f) => ({ ...f, priceMax: fromUrl.priceMax! }));
+      setFilterMode("price_range");
+    }
+    if (fromUrl.minRoiGross != null && fromUrl.minRoiGross > 0) {
+      setMinRoiGross(fromUrl.minRoiGross);
+    }
+    if (fromUrl.onlyWithRoi) setOnlyWithRoi(true);
+    if (searchParams.get("notify") === "1") setNotifyEmail(true);
+
+    const cp = searchParams.get("cp")?.replace(/\D/g, "").slice(0, 5);
+    const q = cp ?? searchParams.get("q")?.trim();
+    if (!q) return;
+
+    void (async () => {
+      setQuery(q);
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
       if (!res.ok) return;
-      const data = (await res.json()) as { results: GeocodeHit[] };
-      setSuggestions(data.results ?? []);
-    }, 280);
-    return () => clearTimeout(t);
-  }, [query]);
+      const data = (await res.json()) as { results?: GeocodeHit[] };
+      const hit = data.results?.[0];
+      if (!hit) return;
+      pickPlaceRef.current(hit);
+    })();
+  }, [searchParams]);
+
+  const pickPlaceRef = useRef<(hit: GeocodeHit) => void>(() => {});
 
   const loadMap = useCallback(async (bbox: [number, number, number, number]) => {
+    if (stepRef.current !== 0) return;
     visibleBboxRef.current = bbox;
     const [minLng, minLat, maxLng, maxLat] = bbox;
     const res = await fetch(
@@ -134,8 +174,17 @@ export default function NewScanPage() {
     );
     if (!res.ok) return;
     const data = (await res.json()) as { features: Pin[] };
-    setPins(data.features ?? []);
+    const next = data.features ?? [];
+    setPins((prev) => {
+      if (prev.length === next.length && prev.every((p, i) => p.id === next[i]?.id)) return prev;
+      return next;
+    });
   }, []);
+
+  const polygonFitKey = useMemo(
+    () => (center ? `${center.lng.toFixed(5)},${center.lat.toFixed(5)}` : null),
+    [center]
+  );
 
   const applyScanCenter = useCallback((lng: number, lat: number, label?: string) => {
     setCenter({ lng, lat });
@@ -145,8 +194,8 @@ export default function NewScanPage() {
   }, [radiusKm]);
 
   function pickPlace(hit: GeocodeHit) {
-    setQuery(hit.label.split(",")[0] ?? hit.label);
-    setSuggestions([]);
+    const cp = hit.label.match(/\b(\d{5})\b/)?.[1];
+    setQuery(cp ?? hit.label.split(",")[0] ?? hit.label);
     setSelectedPinId(null);
     applyScanCenter(hit.lng, hit.lat, hit.label);
     const zoom = hit.bbox
@@ -157,6 +206,8 @@ export default function NewScanPage() {
       : 13;
     setFlyTo({ center: [hit.lng, hit.lat], zoom });
   }
+
+  pickPlaceRef.current = pickPlace;
 
   async function startScan() {
     setLoading(true);
@@ -235,35 +286,7 @@ export default function NewScanPage() {
                 Busca un CP o barrio, <strong className="font-medium text-neutral-900">haz un clic en el mapa</strong>{" "}
                 o elige un piso. El área azul es un círculo — no hace falta dibujar vértices.
               </p>
-              <div className="relative">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && suggestions[0]) {
-                      e.preventDefault();
-                      pickPlace(suggestions[0]);
-                    }
-                  }}
-                  placeholder="CP (5 dígitos) o barrio — ej. 08906, Sants"
-                  className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm"
-                />
-                {suggestions.length > 0 && (
-                  <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg">
-                    {suggestions.map((s, idx) => (
-                      <li key={`${s.lat},${s.lng},${idx}`}>
-                        <button
-                          type="button"
-                          onClick={() => pickPlace(s)}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-neutral-100"
-                        >
-                          {s.label}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              <SpainLocationSearch value={query} onChange={setQuery} onPick={pickPlace} />
               {placeLabel && (
                 <p className="rounded-lg border border-neutral-200 bg-[#f7f6f3] px-3 py-2 text-sm text-neutral-800">
                   {placeLabel} · ~{areaKm2.toFixed(1)} km² (radio {radiusKm} km)
@@ -700,11 +723,17 @@ export default function NewScanPage() {
             </div>
           )}
 
-          <p className="mt-6 text-center text-xs text-neutral-400">
-            <Link href="/app/explorar" className="font-medium text-neutral-950 underline">
+          <div className="mt-6 space-y-2 text-center text-xs">
+            <Link
+              href="/app/oportunidades"
+              className="block rounded-lg bg-orange-600 py-2.5 text-sm font-semibold text-white hover:bg-orange-700"
+            >
+              Ver oportunidades marcadas →
+            </Link>
+            <Link href="/app/explorar" className="font-medium text-neutral-600 underline">
               Explorar inventario en mapa
             </Link>
-          </p>
+          </div>
         </div>
       </aside>
 
@@ -721,6 +750,7 @@ export default function NewScanPage() {
           centerMarker={center}
           initialView={SPAIN_VIEW}
           autoFitPolygon={Boolean(polygon && step === 0)}
+          polygonFitKey={step === 0 ? polygonFitKey : null}
           pins={pins}
           selectedId={selectedPinId}
           onSelectPin={(id) => {

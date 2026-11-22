@@ -45,6 +45,8 @@ type Props = {
   initialView?: SpainMapView;
   /** Encuadra el mapa cuando cambia el polígono de scan (resultados / geocodificar). */
   autoFitPolygon?: boolean;
+  /** Si se define, solo re-encuadra cuando cambia esta clave (p. ej. centro), no cada vértice del círculo. */
+  polygonFitKey?: string | null;
   /** Encuadra según pins (p. ej. resultados del scan) si no hay polígono. */
   autoFitPins?: boolean;
   /** Encuadre explícito (prioridad sobre autoFit*). Cambia fitKey al cambiar scan/zona. */
@@ -114,6 +116,7 @@ export function RoiScanMap({
   centerMarker = null,
   initialView = SPAIN_VIEW,
   autoFitPolygon = false,
+  polygonFitKey = null,
   autoFitPins = false,
   mapFitBounds = null,
   fitKey = "",
@@ -361,12 +364,15 @@ export function RoiScanMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !autoFitPolygon || !polygon) return;
-    const key = JSON.stringify(polygon.coordinates[0]);
+    const key =
+      polygonFitKey != null && polygonFitKey !== ""
+        ? polygonFitKey
+        : JSON.stringify(polygon.coordinates[0]);
     if (lastFitPolygonKeyRef.current === key) return;
     lastFitPolygonKeyRef.current = key;
     const bounds = polygonBounds(polygon);
     map.fitBounds(bounds, { padding: 56, maxZoom: 15, duration: 700 });
-  }, [polygon, mapReady, autoFitPolygon]);
+  }, [polygon, mapReady, autoFitPolygon, polygonFitKey]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -11,6 +11,13 @@ import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import type { ListingSummary } from "@/lib/listing/summary-types";
 import { portalBadge } from "@/lib/portals";
 import { SaveListingButton } from "@/components/listings/SaveListingButton";
+import {
+  OpportunityScoreBadge,
+  SellerKindBadge,
+  ValuationSnippet,
+} from "@/components/listings/OpportunityBadges";
+import { PriceValuationSlider } from "@/components/listings/PriceValuationSlider";
+import { computeOpportunityMetrics } from "@/lib/listing/opportunity-metrics";
 import { listingDetailHref } from "@/lib/listing/return-navigation";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -46,19 +53,25 @@ export function ListingDetailSidePanel({
   listing,
   summary,
   summaryLoading,
+  detailLoading,
   onClose,
   onSummaryModeChange,
   summaryMode = "whole",
   preferRoomsTab = false,
+  showEmptyState = true,
 }: {
   listing: SidePanelListing | null;
   summary: ListingSummary | null;
   summaryLoading?: boolean;
+  /** Carga del resumen completo (notariado, INE, habitaciones). */
+  detailLoading?: boolean;
   onClose?: () => void;
   /** Al abrir «Habitaciones», pedir resumen con comparables de habitación. */
   onSummaryModeChange?: (mode: "whole" | "rooms") => void;
   summaryMode?: "whole" | "rooms";
   preferRoomsTab?: boolean;
+  /** En feed ancho: ocultar columna vacía hasta que haya selección. */
+  showEmptyState?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("resumen");
   const [fetched, setFetched] = useState<SidePanelListing | null>(null);
@@ -124,9 +137,10 @@ export function ListingDetailSidePanel({
     }`;
 
   const panelShell =
-    "flex min-h-0 shrink-0 flex-col border-l border-neutral-200 bg-white w-full max-w-md xl:w-[min(440px,36vw)] xl:max-w-none";
+    "flex min-h-0 shrink-0 flex-col border-l border-neutral-200 bg-white w-full max-w-md xl:h-full xl:w-[min(400px,32vw)] xl:max-w-none xl:overflow-hidden";
 
   if (!resolved) {
+    if (!showEmptyState) return null;
     return (
       <aside className={`hidden xl:flex ${panelShell} bg-[#f7f6f3]`}>
         <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
@@ -151,6 +165,19 @@ export function ListingDetailSidePanel({
     .filter(Boolean)
     .join(" · ");
   const displayRoi = summary?.roi.grossRoiPct ?? resolved.roi ?? null;
+  const opportunity =
+    summary?.opportunity ??
+    computeOpportunityMetrics(
+      {
+        price: resolved.price,
+        sqm: effectiveSqm,
+        roi: displayRoi,
+        sourcePortal: resolved.sourcePortal,
+        title: resolved.title,
+        sourceUrl: resolved.sourceUrl,
+      },
+      summary
+    );
 
   return (
     <aside
@@ -168,6 +195,8 @@ export function ListingDetailSidePanel({
                 <span className="rounded bg-neutral-950 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">
                   En venta
                 </span>
+                <SellerKindBadge kind={opportunity.sellerKind} />
+                <OpportunityScoreBadge score={opportunity.opportunityScore} />
                 <span className="text-[10px] font-semibold uppercase text-neutral-500">{portal.name}</span>
                 {resolved.rank != null && (
                   <span className="text-[10px] text-neutral-500">#{resolved.rank} ranking</span>
@@ -190,19 +219,35 @@ export function ListingDetailSidePanel({
               </button>
             )}
           </div>
-          <div className="mt-2 flex items-end justify-between gap-2">
-            <p className="text-xl font-bold tabular-nums text-neutral-950">
-              {resolved.price.toLocaleString("es-ES")} €
-            </p>
-            <div className="flex shrink-0 items-center gap-2">
-              <SaveListingButton listingId={resolved.id} compact />
-              {displayRoi != null && (
-                <span className="rounded-md bg-neutral-950 px-2 py-0.5 text-xs font-bold text-white tabular-nums">
-                  {displayRoi.toFixed(2)}% ROI
-                </span>
+          <div className="mt-2 space-y-2">
+            <ValuationSnippet
+              price={resolved.price}
+              valuationMid={opportunity.valuationMid}
+              discountPct={opportunity.discountPct}
+            />
+            <div className="flex items-end justify-between gap-2">
+              {opportunity.valuationMid == null && (
+                <p className="text-xl font-bold tabular-nums text-neutral-950">
+                  {resolved.price.toLocaleString("es-ES")} €
+                </p>
               )}
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                <SaveListingButton listingId={resolved.id} compact />
+                {displayRoi != null && (
+                  <span className="rounded-md bg-neutral-950 px-2 py-0.5 text-xs font-bold text-white tabular-nums">
+                    {displayRoi.toFixed(2)}% ROI
+                  </span>
+                )}
+              </div>
             </div>
+            <PriceValuationSlider price={resolved.price} metrics={opportunity} />
           </div>
+          <Link
+            href={listingDetailHref(resolved.id, returnTo)}
+            className="mt-2 inline-block text-[11px] font-medium text-orange-700 underline"
+          >
+            Ficha completa y calculadora →
+          </Link>
           {resolved.sourceUrl && (
             <a
               href={resolved.sourceUrl}
@@ -246,7 +291,7 @@ export function ListingDetailSidePanel({
         </nav>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[#faf9f7]">
         {tab === "resumen" && (
           <>
             {summaryLoading && !summary && (
@@ -269,10 +314,10 @@ export function ListingDetailSidePanel({
         )}
         {tab === "habitaciones" && (
           <div className="space-y-3 bg-[#faf9f7] p-3">
-            {(summaryLoading || summaryMode !== "rooms") && !summary?.roomRent && (
+            {(summaryLoading || detailLoading) && summaryMode === "rooms" && !summary?.roomRent && (
               <div className="animate-pulse space-y-3">
                 <div className="h-24 rounded-lg bg-neutral-200" />
-                <div className="h-48 rounded-xl bg-neutral-800" />
+                <div className="h-32 rounded-lg bg-neutral-200" />
               </div>
             )}
             {summary?.roomRent && summaryMode === "rooms" ? (
@@ -340,11 +385,13 @@ export function ListingDetailSidePanel({
                   bedrooms={summary.roomRent.bedrooms}
                 />
               </>
-            ) : summaryMode === "rooms" && !summaryLoading ? (
+            ) : summaryMode === "rooms" && !summaryLoading && !detailLoading ? (
               <p className="text-xs text-neutral-600">
                 No hay habitaciones en alquiler cerca de este inmueble. Prueba otra zona o espera al scrape de
                 alquileres.
               </p>
+            ) : summaryMode !== "rooms" ? (
+              <p className="text-xs text-neutral-600">Cargando comparables de habitación…</p>
             ) : null}
           </div>
         )}

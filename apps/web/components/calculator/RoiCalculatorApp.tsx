@@ -22,16 +22,22 @@ const MODES: { id: CalculatorMode; label: string }[] = [
   { id: "flip", label: "Flipping" },
 ];
 
-export function RoiCalculatorApp() {
+export function RoiCalculatorApp({
+  initialPurchasePrice,
+  initialMonthlyRent,
+}: {
+  initialPurchasePrice?: number;
+  initialMonthlyRent?: number;
+} = {}) {
   const printRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<CalculatorMode>("buy_to_rent");
 
-  const [purchasePrice, setPurchasePrice] = useState(230_000);
+  const [purchasePrice, setPurchasePrice] = useState(initialPurchasePrice ?? 230_000);
   const [itpPct, setItpPct] = useState(10);
   const [ajdPct, setAjdPct] = useState(0);
   const [renovation, setRenovation] = useState(0);
 
-  const [monthlyRent, setMonthlyRent] = useState(900);
+  const [monthlyRent, setMonthlyRent] = useState(initialMonthlyRent ?? 900);
   const [occupancyPct, setOccupancyPct] = useState(100);
 
   const [pricePerNight, setPricePerNight] = useState(100);
@@ -194,6 +200,52 @@ export function RoiCalculatorApp() {
               ))}
             </div>
             <p className="text-sm text-neutral-600">País: España · Moneda: EUR (€)</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-full border border-neutral-200 px-3 py-1 text-[11px] hover:bg-neutral-50"
+                onClick={() => {
+                  setPurchasePrice(180_000);
+                  setMonthlyRent(850);
+                  setItpPct(10);
+                  setDownPaymentPct(20);
+                  setMortgageRatePct(2.2);
+                }}
+              >
+                Alquiler clásico ~180 k€
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-neutral-200 px-3 py-1 text-[11px] hover:bg-neutral-50"
+                onClick={() => {
+                  setPurchasePrice(320_000);
+                  setMonthlyRent(1_350);
+                  setItpPct(10);
+                  setDownPaymentPct(25);
+                }}
+              >
+                Ciudad ~320 k€
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-neutral-200 px-3 py-1 text-[11px] hover:bg-neutral-50"
+                onClick={() => {
+                  setMode("airbnb");
+                  setPurchasePrice(240_000);
+                  setPricePerNight(95);
+                  setOccupancyPct(72);
+                  setFurnishing(12_000);
+                }}
+              >
+                Airbnb costa
+              </button>
+              <a
+                href="/app/explorar?pmax=200000&roi=5&sort=roi_desc"
+                className="rounded-full border border-neutral-950 bg-neutral-950 px-3 py-1 text-[11px] font-medium text-white"
+              >
+                Explorar ≤200 k · ROI 5%+
+              </a>
+            </div>
           </CalcSection>
 
           <CalcSection title="Precio de la propiedad">

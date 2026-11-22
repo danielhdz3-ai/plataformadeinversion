@@ -1,3 +1,4 @@
+import type { ListingSort } from "@/components/filters/ListingFiltersPanel";
 import Link from "next/link";
 
 export function ScanResultsToolbar({
@@ -18,8 +19,8 @@ export function ScanResultsToolbar({
   onPriceMaxChange,
 }: {
   scanId: string;
-  sort: "roi_desc" | "price_asc" | "price_desc";
-  onSortChange: (s: "roi_desc" | "price_asc" | "price_desc") => void;
+  sort: ListingSort;
+  onSortChange: (s: ListingSort) => void;
   showRoiSort?: boolean;
   onExportCsv: () => void;
   onExportJson?: () => void;
@@ -61,14 +62,15 @@ export function ScanResultsToolbar({
           <label className="text-xs text-neutral-500">Orden</label>
           <select
             value={sort}
-            onChange={(e) =>
-              onSortChange(e.target.value as "roi_desc" | "price_asc" | "price_desc")
-            }
+            onChange={(e) => onSortChange(e.target.value as ListingSort)}
             className="rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs"
           >
+            <option value="score_desc">Mayor score</option>
+            <option value="discount_desc">Mayor descuento</option>
             {showRoiSort && <option value="roi_desc">ROI ↓</option>}
             <option value="price_asc">Precio ↑</option>
             <option value="price_desc">Precio ↓</option>
+            <option value="sqm_desc">m² ↓</option>
           </select>
         </div>
       </div>

@@ -23,12 +23,12 @@ export async function refreshPostalCodeLive(
 
   if (process.env.VERCEL === "1") {
     process.env.SCAN_CP_SKIP_PLAYWRIGHT = "1";
-    process.env.SCRAPE_CP_FOTOCASA_PAGES ??= "8";
-    process.env.SCRAPE_CP_PISOS_PAGES ??= "6";
-    process.env.SCRAPE_CP_PISOS_MAX ??= "120";
-    process.env.SCRAPE_CP_BOOST_ROUNDS ??= "1";
-    process.env.SCAN_HIPOGES_MAX_PAGES ??= "8";
-    process.env.SCAN_SOLVIA_MAX_PAGES ??= "4";
+    process.env.SCRAPE_CP_FOTOCASA_PAGES ??= "16";
+    process.env.SCRAPE_CP_PISOS_PAGES ??= "12";
+    process.env.SCRAPE_CP_PISOS_MAX ??= "220";
+    process.env.SCRAPE_CP_BOOST_ROUNDS ??= "3";
+    process.env.SCAN_HIPOGES_MAX_PAGES ??= "10";
+    process.env.SCAN_SOLVIA_MAX_PAGES ??= "6";
     globalThis.__PI_CREATE_SUPABASE__ = (url: string, key: string) => createClient(url, key);
   }
 

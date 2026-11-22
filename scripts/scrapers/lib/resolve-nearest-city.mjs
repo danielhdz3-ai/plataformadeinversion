@@ -1,33 +1,7 @@
 import { haversineKm } from "./geo.mjs";
 import { listCities } from "./spain-city.mjs";
 
-const FOTOCASA_CITY_SLUG = {
-  barcelona: "barcelona-capital",
-  madrid: "madrid-capital",
-  valencia: "valencia-capital",
-  sevilla: "sevilla-capital",
-  malaga: "malaga-capital",
-  bilbao: "bilbao",
-  zaragoza: "zaragoza-capital",
-  murcia: "murcia-capital",
-  alicante: "alicante-alacant",
-  "a-coruna": "a-coruna",
-  palma: "palma-de-mallorca",
-  "las-palmas": "las-palmas-de-gran-canaria",
-  "santa-cruz-tenerife": "santa-cruz-de-tenerife",
-  girona: "girona",
-  granada: "granada-capital",
-  cadiz: "cadiz",
-  cordoba: "cordoba",
-  valladolid: "valladolid",
-  pamplona: "pamplona",
-  santander: "santander",
-  oviedo: "oviedo",
-  toledo: "toledo",
-  salamanca: "salamanca",
-  burgos: "burgos",
-  almeria: "almeria-capital",
-};
+import { resolveFotocasaZoneSlug } from "./resolve-fotocasa-zone.mjs";
 
 function cityCenter(city) {
   const lng = city.bbox?.[0] != null ? (city.bbox[0] + city.bbox[2]) / 2 : null;
@@ -58,7 +32,7 @@ export function resolveNearestCity(lat, lng, maxKm = 95) {
   }
   if (!best) return null;
   const c = best.city;
-  const fotocasaSlug = FOTOCASA_CITY_SLUG[c.slug] ?? c.slug;
+  const fotocasaSlug = resolveFotocasaZoneSlug(c.slug) ?? c.slug;
   return {
     slug: fotocasaSlug,
     name: c.name,

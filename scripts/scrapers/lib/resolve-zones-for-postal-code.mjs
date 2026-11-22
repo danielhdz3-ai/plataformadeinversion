@@ -2,6 +2,7 @@ import { haversineKm } from "./geo.mjs";
 import { geocodePostalCodeSpain } from "./geocode-es.mjs";
 import { allPrefetchZones } from "./zone-catalog.mjs";
 import { resolveNearestCity } from "./resolve-nearest-city.mjs";
+import { resolveFotocasaZoneSlug } from "./resolve-fotocasa-zone.mjs";
 
 /** Barrios Fotocasa/pisos cercanos al centro del CP. */
 export async function resolveZonesForPostalCode(postalCode) {
@@ -38,7 +39,7 @@ export async function resolveZonesForPostalCode(postalCode) {
 
   if (fotocasaZones.length === 0 && anchorCity) {
     fotocasaZones.push({
-      slug: anchorCity.slug,
+      slug: resolveFotocasaZoneSlug(anchorCity.citySlug) ?? anchorCity.slug,
       name: anchorCity.name,
       ccaa: anchorCity.ccaa,
       lat: geo.lat,

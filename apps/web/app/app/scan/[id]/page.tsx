@@ -9,7 +9,14 @@ import { ResultListingCard } from "@/components/scan/ResultListingCard";
 import { pinFallbackListing } from "@/lib/listing/resolve-side-panel-listing";
 import { ScanProgressOverlay } from "@/components/scan/ScanProgressOverlay";
 import { AppPanelHeader } from "@/components/app/AppPanelHeader";
+import {
+  ListingFiltersPanel,
+  type ListingSort,
+} from "@/components/filters/ListingFiltersPanel";
 import { ScanResultsToolbar } from "@/components/scan/ScanResultsToolbar";
+import { normalizeScanFilters } from "@/lib/scan/apply-scan-filters";
+import { defaultListingFilters } from "@/lib/scan/listing-filter-defaults";
+import { applyListingViewPipeline } from "@/lib/listing/apply-opportunity-view";
 import type { ScanPolygon } from "@/lib/scan/types";
 import { boundsFromPins, polygonBounds } from "@/lib/map/polygon-bounds";
 import { parseScanPolygon } from "@/lib/map/parse-scan-polygon";
@@ -17,9 +24,10 @@ import { SPAIN_VIEW } from "@/lib/map/spain-bounds";
 import { scanOperationUsesRoi } from "@/lib/investment/operations";
 import { SCAN_ZONE_SOFT_WARN_BELOW, SCAN_ZONE_TARGET_IN_POLYGON } from "@/lib/scan/zone-target";
 import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
+import { filtersToUrlSearchParams, mergeUrlFiltersInto } from "@/lib/filters/url-sync";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useListingSummaries } from "@/lib/listing/use-listing-summaries";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type ResultRow = {
   rank: number;
@@ -55,10 +63,12 @@ function ScanResultsPageContent() {
   const [mapCount, setMapCount] = useState(0);
   const [zoneTotal, setZoneTotal] = useState(0);
   const [zoneMatchingFilters, setZoneMatchingFilters] = useState(0);
-  const [sort, setSort] = useState<"roi_desc" | "price_asc" | "price_desc">("roi_desc");
-  const [viewPriceMin, setViewPriceMin] = useState(0);
-  const [viewPriceMax, setViewPriceMax] = useState(2_000_000);
-  const [priceFilterReady, setPriceFilterReady] = useState(false);
+  const [sort, setSort] = useState<ListingSort>("score_desc");
+  const [viewFilters, setViewFilters] = useState<ScanRunFilters>(() => defaultListingFilters());
+  const [viewFiltersReady, setViewFiltersReady] = useState(false);
+  const [viewFiltersOpen, setViewFiltersOpen] = useState(true);
+  const viewFiltersUrlReady = useRef(false);
+  const hadUrlRefine = useRef(false);
   const [mapFallback, setMapFallback] = useState(false);
   const [flyTo, setFlyTo] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -66,6 +76,34 @@ function ScanResultsPageContent() {
   const [scanFilters, setScanFilters] = useState<ScanRunFilters | null>(null);
   const [scanOperation, setScanOperation] = useState<string>("buy_to_rent");
   const usesRoi = scanOperationUsesRoi(scanOperation);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    hadUrlRefine.current = ["pmin", "pmax", "roi", "portals", "sqmMin"].some((k) => params.has(k));
+    setViewFilters((f) => mergeUrlFiltersInto(f, params));
+    const sortParam = params.get("sort");
+    if (
+      sortParam === "price_asc" ||
+      sortParam === "price_desc" ||
+      sortParam === "sqm_desc" ||
+      sortParam === "roi_desc" ||
+      sortParam === "score_desc" ||
+      sortParam === "discount_desc"
+    ) {
+      setSort(sortParam);
+    }
+    viewFiltersUrlReady.current = true;
+  }, [id]);
+
+  useEffect(() => {
+    if (!viewFiltersUrlReady.current) return;
+    const fp = filtersToUrlSearchParams(viewFilters);
+    fp.set("sort", sort);
+    const listing = searchParams.get("listing");
+    if (listing) fp.set("listing", listing);
+    const qs = fp.toString();
+    router.replace(qs ? `/app/scan/${id}?${qs}` : `/app/scan/${id}`, { scroll: false });
+  }, [viewFilters, sort, id, router, searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,11 +162,13 @@ function ScanResultsPageContent() {
         setMapFallback(Boolean(data.usedMapFallback));
         if (data.filters) {
           setScanFilters(data.filters);
-          if (!priceFilterReady) {
-            setViewPriceMin(Number(data.filters.priceMin ?? 0));
-            setViewPriceMax(Number(data.filters.priceMax ?? 2_000_000));
-            setPriceFilterReady(true);
+          if (!viewFiltersReady && !hadUrlRefine.current) {
+            setViewFilters({
+              ...defaultListingFilters(),
+              ...normalizeScanFilters(data.filters as Record<string, unknown>),
+            });
           }
+          if (!viewFiltersReady) setViewFiltersReady(true);
         }
         const polyFromResults = parseScanPolygon(data.polygon);
         if (polyFromResults) setPolygon(polyFromResults);
@@ -155,47 +195,51 @@ function ScanResultsPageContent() {
     return { min: Number.isFinite(min) ? min : 0, max: max || 500_000 };
   }, [rows]);
 
-  const priceFilteredRows = useMemo(() => {
-    return rows.filter((r) => {
-      const p = r.listing.price;
-      return p >= viewPriceMin && p <= viewPriceMax;
-    });
-  }, [rows, viewPriceMin, viewPriceMax]);
-
-  const sortedRows = useMemo(() => {
-    const copy = [...priceFilteredRows];
-    if (sort === "price_asc") copy.sort((a, b) => a.listing.price - b.listing.price);
-    else if (sort === "price_desc") copy.sort((a, b) => b.listing.price - a.listing.price);
-    else copy.sort((a, b) => b.roi_gross - a.roi_gross);
-    return copy;
-  }, [priceFilteredRows, sort]);
-
-  const visiblePinIds = useMemo(() => new Set(sortedRows.map((r) => r.listing.id)), [sortedRows]);
-
-  const filteredPins = useMemo(
-    () =>
-      pins.filter(
-        (p) =>
-          visiblePinIds.has(p.id) &&
-          p.price >= viewPriceMin &&
-          p.price <= viewPriceMax
-      ),
-    [pins, visiblePinIds, viewPriceMin, viewPriceMax]
-  );
-
-  const listingIds = useMemo(() => {
-    const ids = sortedRows.map((r) => r.listing.id);
-    if (selected && !ids.includes(selected)) ids.push(selected);
-    return ids;
-  }, [sortedRows, selected]);
   const [summaryMode, setSummaryMode] = useState<"whole" | "rooms">("whole");
   useEffect(() => {
     setSummaryMode(scanOperation === "buy_to_rent_rooms" ? "rooms" : "whole");
   }, [scanOperation, id]);
+
+  const listingIds = useMemo(() => {
+    const ids = rows.slice(0, 55).map((r) => r.listing.id);
+    if (selected && !ids.includes(selected)) ids.push(selected);
+    return ids;
+  }, [rows, selected]);
   const { summaries, loading: summariesLoading } = useListingSummaries(listingIds, {
     detailId: selected,
     mode: summaryMode,
   });
+
+  const sortedRows = useMemo(() => {
+    const piped = applyListingViewPipeline(
+      rows.map((r) => ({
+        id: r.listing.id,
+        price: r.listing.price,
+        bedrooms: r.listing.bedrooms,
+        bathrooms: r.listing.bathrooms,
+        sqm: r.listing.sqm,
+        source_portal: r.listing.source_portal,
+        title: r.listing.title,
+        sourceUrl: r.listing.source_url,
+        roi: r.roi_gross,
+        rentConfidence: r.listing.listing_investment?.rent_confidence,
+      })),
+      viewFilters,
+      sort,
+      summaries
+    );
+    const order = new Map(piped.map((p, i) => [p.id, i]));
+    return [...rows]
+      .filter((r) => order.has(r.listing.id))
+      .sort((a, b) => (order.get(a.listing.id)! ?? 0) - (order.get(b.listing.id)! ?? 0));
+  }, [rows, viewFilters, sort, summaries]);
+
+  const visiblePinIds = useMemo(() => new Set(sortedRows.map((r) => r.listing.id)), [sortedRows]);
+
+  const filteredPins = useMemo(
+    () => pins.filter((p) => visiblePinIds.has(p.id)),
+    [pins, visiblePinIds]
+  );
 
   const didInitialSelect = useRef(false);
   const rentById = useMemo(() => {
@@ -347,11 +391,16 @@ function ScanResultsPageContent() {
         showRoiSort={usesRoi}
         totalCount={rows.length}
         filteredCount={sortedRows.length}
-        priceMin={viewPriceMin}
-        priceMax={viewPriceMax}
+        priceMin={viewFilters.priceMin ?? 0}
+        priceMax={viewFilters.priceMax ?? 2_000_000}
         priceCeiling={Math.max(priceBounds.max, scanFilters?.priceMax ?? priceBounds.max)}
-        onPriceMinChange={(v) => setViewPriceMin(Math.max(0, v))}
-        onPriceMaxChange={(v) => setViewPriceMax(Math.max(viewPriceMin, v))}
+        onPriceMinChange={(v) => setViewFilters((f) => ({ ...f, priceMin: Math.max(0, v) }))}
+        onPriceMaxChange={(v) =>
+          setViewFilters((f) => ({
+            ...f,
+            priceMax: Math.max(f.priceMin ?? 0, v),
+          }))
+        }
       />
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         <aside className="flex min-h-0 w-full shrink-0 flex-col border-r border-neutral-200 bg-[#f7f6f3] lg:w-[min(380px,34vw)]">
@@ -382,18 +431,50 @@ function ScanResultsPageContent() {
           />
           {scanFilters && (
             <p className="mx-3 -mt-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[11px] text-neutral-700">
-              Filtros: {(scanFilters.priceMin ?? 0).toLocaleString("es-ES")}–
-              {(scanFilters.priceMax ?? 0).toLocaleString("es-ES")} € · dorm. según wizard
+              Scan (wizard): {(scanFilters.priceMin ?? 0).toLocaleString("es-ES")}–
+              {(scanFilters.priceMax ?? 0).toLocaleString("es-ES")} €
               {zoneTotal > zoneMatchingFilters ? (
-                <>
-                  {" "}
-                  · {zoneTotal} anuncios en el polígono sin filtro de precio (datos en plataforma, no todo el
-                  mercado)
-                </>
+                <> · {zoneTotal} en polígono antes de filtros del ranking</>
               ) : null}
             </p>
           )}
+          <div className="mx-3">
+            <button
+              type="button"
+              onClick={() => setViewFiltersOpen((o) => !o)}
+              className="mb-2 flex w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium"
+            >
+              Refinar resultados
+              <span className="text-neutral-400">{viewFiltersOpen ? "▾" : "▸"}</span>
+            </button>
+            {viewFiltersOpen && (
+              <ListingFiltersPanel
+                compact
+                showRoi={usesRoi}
+                filters={viewFilters}
+                onChange={setViewFilters}
+                sort={sort}
+                onSortChange={setSort}
+                matchedCount={sortedRows.length}
+                totalCount={rows.length}
+                onReset={() => {
+                  if (scanFilters) {
+                    setViewFilters({
+                      ...defaultListingFilters(),
+                      ...normalizeScanFilters(scanFilters as Record<string, unknown>),
+                    });
+                  } else setViewFilters(defaultListingFilters());
+                  setSort(usesRoi ? "roi_desc" : "price_asc");
+                }}
+              />
+            )}
+          </div>
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+            {rows.length > 0 && sortedRows.length === 0 && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                Ningún resultado con estos filtros de vista. Amplía precio, ROI o portales, o restablece.
+              </p>
+            )}
             {mapFallback && sortedRows.length > 0 && (
               <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
                 Ningún piso encajó en el ranking del scan con tus filtros actuales. Mostramos anuncios en

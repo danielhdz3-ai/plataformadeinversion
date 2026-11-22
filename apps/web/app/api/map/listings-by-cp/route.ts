@@ -2,7 +2,6 @@ import { decodeListingTitle } from "@/lib/decode-html";
 import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { resolveListingGrossRoiPct } from "@/lib/listing/gross-roi";
 import { resolveRentEstMonthly } from "@/lib/listing/rent-est";
-import { isResidentialPropertyKind } from "@/lib/listing/residential-kind";
 import { interleaveByPortal } from "@/lib/map/balance-listings-by-portal";
 import { geocodeSpainQuery } from "@/lib/map/geocode-spain";
 import { portalsForCpLiveImport } from "@/lib/scrape/cp-live-portals";
@@ -26,9 +25,9 @@ export async function GET(req: NextRequest) {
   }
 
   const live = req.nextUrl.searchParams.get("live") !== "0";
-  const waitForScrape = req.nextUrl.searchParams.get("wait") !== "0";
+  const waitForScrape = req.nextUrl.searchParams.get("wait") === "1";
   const maxRows = Number(req.nextUrl.searchParams.get("max") ?? "800");
-  const radiusM = Number(req.nextUrl.searchParams.get("radiusM") ?? "2800");
+  const radiusM = Number(req.nextUrl.searchParams.get("radiusM") ?? "5500");
 
   const hits = await geocodeSpainQuery(cp);
   const center = hits[0];
@@ -67,39 +66,12 @@ export async function GET(req: NextRequest) {
 
   const supabase = await getDbClient();
 
-  const freshQuery = supabase
-    .from("listings")
-    .select("id, property_kind")
-    .eq("status", "active")
-    .eq("operation", "sale")
-    .eq("postal_code", cp)
-    .not("geom", "is", null)
-    .limit(maxRows);
-
-  const { data: freshRows, error: freshErr } = await freshQuery;
-
-  let rowsForIds = freshRows;
-  if (freshErr) {
-    if (/last_seen_at/i.test(freshErr.message)) {
-      const { data: fallbackRows } = await supabase
-        .from("listings")
-        .select("id, property_kind")
-        .eq("status", "active")
-        .eq("operation", "sale")
-        .eq("postal_code", cp)
-        .not("geom", "is", null)
-        .limit(maxRows);
-      rowsForIds = fallbackRows;
-    } else {
-      return NextResponse.json({ error: freshErr.message, code: "DB" }, { status: 500 });
-    }
-  }
-
-  const freshIds = new Set(
-    (rowsForIds ?? [])
-      .filter((r) => isResidentialPropertyKind(r.property_kind))
-      .map((r) => r.id)
-  );
+  await supabase.rpc("tag_listings_postal_code", {
+    p_cp: cp,
+    p_lng: center.lng,
+    p_lat: center.lat,
+    p_radius_m: radiusM,
+  });
 
   type RpcRow = {
     id: string;
@@ -124,15 +96,21 @@ export async function GET(req: NextRequest) {
     "idealista",
   ] as const;
 
-  for (const portal of portals) {
-    const { data, error } = await supabase.rpc("listings_for_postal_code", {
-      p_cp: cp,
-      p_lng: center.lng,
-      p_lat: center.lat,
-      p_radius_m: radiusM,
-      max_rows: Math.ceil(maxRows / portals.length) + 50,
-      portal_filter: portal,
-    });
+  const perPortal = Math.ceil(maxRows / portals.length) + 50;
+  const batches = await Promise.all(
+    portals.map(async (portal) => {
+      const { data, error } = await supabase.rpc("listings_for_postal_code", {
+        p_cp: cp,
+        p_lng: center.lng,
+        p_lat: center.lat,
+        p_radius_m: radiusM,
+        max_rows: perPortal,
+        portal_filter: portal,
+      });
+      return { portal, data, error };
+    })
+  );
+  for (const { error, data } of batches) {
     if (error) {
       if (/listings_for_postal_code|function/i.test(error.message)) {
         return NextResponse.json(
@@ -143,7 +121,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message, code: "DB" }, { status: 500 });
     }
     for (const row of (data ?? []) as RpcRow[]) {
-      if (freshIds.has(row.id)) merged.set(row.id, row);
+      merged.set(row.id, row);
     }
   }
 

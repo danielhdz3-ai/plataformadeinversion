@@ -123,8 +123,13 @@ async function computeOne(sale, globalRents, benchmarkMap) {
     const rentsEur = near.map((c) => Number(c.price)).filter(isPlausibleMonthlyRent);
     const sorted = rentsEur.sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)] ?? sorted[0];
-    let rentEst = capRentEstForSalePrice(Math.round(median * 0.92), price);
-    if (rentEst == null) return { ok: false };
+    let rentEst = Math.round(median * 0.92);
+    if (near.length >= 4) {
+      if (!isPlausibleMonthlyRent(rentEst)) return { ok: false };
+    } else {
+      rentEst = capRentEstForSalePrice(rentEst, price);
+      if (rentEst == null) return { ok: false };
+    }
     const confidence = near.length >= 8 ? "high" : near.length >= 4 ? "medium" : "low";
     const ok = await upsertInvestment(sale.id, price, rentEst, confidence, near.length);
     return { ok, spatial: true };

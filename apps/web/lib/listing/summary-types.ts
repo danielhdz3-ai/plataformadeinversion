@@ -1,4 +1,5 @@
 import type { ListingCensusSection } from "@/lib/listing/census-types";
+import type { OpportunityMetrics } from "@/lib/listing/opportunity-metrics";
 import type { RoomRentComparable } from "@/lib/listing/room-rent";
 import type { NotaryPortalStats } from "@/lib/notariado/types";
 
@@ -55,6 +56,8 @@ export type ListingSummary = {
     rentM2: { x: string; y: number }[];
     saleChangePct: number;
     rentChangePct: number;
+    source?: "penotariado" | "estimated";
+    sourceLabel?: string;
   };
   demographics: ListingCensusSection | { note: string };
   localDevelopments: readonly {
@@ -64,4 +67,5 @@ export type ListingSummary = {
     description: string;
   }[];
   nearbyPlaces: { note: string };
+  opportunity: OpportunityMetrics;
 };

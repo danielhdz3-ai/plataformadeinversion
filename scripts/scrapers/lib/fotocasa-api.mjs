@@ -10,6 +10,7 @@ const DEFAULT_HEADERS = {
 /** Provincia / zona → slug en URL Fotocasa (venta viviendas). */
 export const FOTOCASA_SALE_ZONES = [
   { slug: "madrid-capital", name: "Madrid", ccaa: "Madrid" },
+  { slug: "madrid-provincia", name: "Madrid provincia", ccaa: "Madrid" },
   { slug: "barcelona-capital", name: "Barcelona", ccaa: "Cataluña" },
   { slug: "valencia-capital", name: "Valencia", ccaa: "Comunitat Valenciana" },
   { slug: "sevilla-capital", name: "Sevilla", ccaa: "Andalucía" },
@@ -21,6 +22,7 @@ export const FOTOCASA_SALE_ZONES = [
   { slug: "palma-de-mallorca", name: "Palma", ccaa: "Illes Balears" },
   { slug: "las-palmas-de-gran-canaria", name: "Las Palmas", ccaa: "Canarias" },
   { slug: "a-coruna", name: "A Coruña", ccaa: "Galicia" },
+  { slug: "castellon-provincia", name: "Castellón", ccaa: "Comunitat Valenciana" },
 ];
 
 /** zoneSlug: `madrid-capital` o `madrid-capital/chamberi` (barrio). */

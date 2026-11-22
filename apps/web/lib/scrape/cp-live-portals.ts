@@ -8,7 +8,7 @@ export function portalsForCpLiveImport(): ScanPortalId[] {
       .filter(Boolean) as ScanPortalId[];
   }
   /** Sin Playwright en la petición HTTP (habitaclia/Kelify/Idealista → Actions/cron). */
-  const fast: ScanPortalId[] = ["fotocasa", "pisos_com", "hipoges", "solvia"];
+  const fast: ScanPortalId[] = ["fotocasa", "pisos_com", "kelify", "hipoges", "solvia"];
   const toggles = defaultPortalToggles();
   const selected = selectedPortals(toggles);
   return fast.filter((p) => selected.includes(p));

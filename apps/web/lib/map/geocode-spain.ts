@@ -1,4 +1,12 @@
+import {
+  getCachedGeocodeHits,
+  getCachedPostalHit,
+  setCachedGeocodeHits,
+  setCachedPostalHit,
+} from "@/lib/map/geocode-cache";
 import { SPAIN_BBOX } from "@/lib/map/spain-bounds";
+
+export const ZONE_STOCK_TARGET = 80;
 
 export type GeocodeHit = {
   label: string;
@@ -109,21 +117,87 @@ async function zippopotamPostalHit(postal: string): Promise<GeocodeHit | null> {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function nominatimFetch(params: Record<string, string>) {
   const url = new URL("https://nominatim.openstreetmap.org/search");
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const res = await fetch(url.toString(), {
-    headers: { "User-Agent": UA },
-    next: { revalidate: 86400 },
-  });
-  if (!res.ok) return [];
-  return (await res.json()) as NominatimItem[];
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url.toString(), {
+        headers: { "User-Agent": UA },
+        next: { revalidate: 86400 },
+      });
+      if (res.ok) return (await res.json()) as NominatimItem[];
+      if (res.status === 429 || res.status >= 500) {
+        await sleep(350 * (attempt + 1));
+        continue;
+      }
+      return [];
+    } catch {
+      await sleep(350 * (attempt + 1));
+    }
+  }
+  return [];
+}
+
+function queryLooksLikePartialCp(q: string): boolean {
+  const t = q.trim();
+  return /^\d{1,3}$/.test(t);
+}
+
+/** CP y etiqueta legible desde coordenadas (Nominatim reverse). */
+export async function reverseGeocodeSpain(lat: number, lng: number): Promise<GeocodeHit | null> {
+  try {
+    const url = new URL("https://nominatim.openstreetmap.org/reverse");
+    url.searchParams.set("lat", String(lat));
+    url.searchParams.set("lon", String(lng));
+    url.searchParams.set("format", "json");
+    url.searchParams.set("addressdetails", "1");
+    url.searchParams.set("zoom", "14");
+    const res = await fetch(url.toString(), {
+      headers: { "User-Agent": UA },
+      next: { revalidate: 86400 },
+    });
+    if (!res.ok) return null;
+    const item = (await res.json()) as NominatimItem;
+    if (!item?.lat || !item.lon) return null;
+    const pc = item.address?.postcode?.replace(/\s/g, "").slice(0, 5);
+    return mapItem(item, pc?.padStart(5, "0"));
+  } catch {
+    return null;
+  }
 }
 
 export async function geocodeSpainQuery(q: string): Promise<GeocodeHit[]> {
-  const postalExtract = extractPostalFromQuery(q);
+  const trimmed = q.trim();
+  if (queryLooksLikePartialCp(trimmed)) {
+    return [];
+  }
+
+  const cached = getCachedGeocodeHits(trimmed);
+  if (cached?.length) return cached;
+
+  const postalExtract = extractPostalFromQuery(trimmed);
   if (postalExtract) {
     const { postal, rest } = postalExtract;
+    const zipCached = getCachedPostalHit(postal);
+    if (zipCached && !rest) {
+      setCachedGeocodeHits(trimmed, [zipCached]);
+      return [zipCached];
+    }
+
+    const zipQuick = !rest ? await zippopotamPostalHit(postal) : null;
+    if (zipQuick) {
+      setCachedPostalHit(postal, zipQuick);
+      if (!rest) {
+        setCachedGeocodeHits(trimmed, [zipQuick]);
+        return [zipQuick];
+      }
+    }
+
     const structured = await nominatimFetch({
       postalcode: postal,
       country: "Spain",
@@ -143,7 +217,9 @@ export async function geocodeSpainQuery(q: string): Promise<GeocodeHit[]> {
     }
 
     if (hits.length > 0) {
-      return hits.filter((r) => inSpain(r.lng, r.lat)).slice(0, 8);
+      const out = hits.filter((r) => inSpain(r.lng, r.lat)).slice(0, 8);
+      setCachedGeocodeHits(trimmed, out);
+      return out;
     }
 
     const fallback = await nominatimFetch({
@@ -157,14 +233,24 @@ export async function geocodeSpainQuery(q: string): Promise<GeocodeHit[]> {
       .filter((item) => postcodeMatches(item, postal))
       .map((item) => mapItem(item, postal));
     if (hits.length > 0) {
-      return hits.filter((r) => inSpain(r.lng, r.lat)).slice(0, 8);
+      const out = hits.filter((r) => inSpain(r.lng, r.lat)).slice(0, 8);
+      setCachedGeocodeHits(trimmed, out);
+      return out;
     }
 
-    const zipHit = await zippopotamPostalHit(postal);
-    if (zipHit) return [zipHit];
+    const zipHit = zipQuick ?? (await zippopotamPostalHit(postal));
+    if (zipHit) {
+      setCachedPostalHit(postal, zipHit);
+      setCachedGeocodeHits(trimmed, [zipHit]);
+      return [zipHit];
+    }
   }
 
-  const query = /\bespaña\b|\bspain\b/i.test(q) ? q : `${q}, España`;
+  if (/^\d+$/.test(trimmed)) {
+    return [];
+  }
+
+  const query = /\bespaña\b|\bspain\b/i.test(trimmed) ? trimmed : `${trimmed}, España`;
   const raw = await nominatimFetch({
     q: query,
     format: "json",
@@ -173,8 +259,16 @@ export async function geocodeSpainQuery(q: string): Promise<GeocodeHit[]> {
     countrycodes: "es",
   });
 
-  return raw
+  const qLower = trimmed.toLowerCase();
+  const out = raw
     .map((item) => mapItem(item))
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng) && inSpain(r.lng, r.lat))
+    .sort((a, b) => {
+      const aMatch = a.label.toLowerCase().includes(qLower) ? 0 : 1;
+      const bMatch = b.label.toLowerCase().includes(qLower) ? 0 : 1;
+      return aMatch - bMatch;
+    })
     .slice(0, 8);
+  if (out.length) setCachedGeocodeHits(trimmed, out);
+  return out;
 }

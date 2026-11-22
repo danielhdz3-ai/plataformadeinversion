@@ -36,3 +36,15 @@ jobs:
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ROI_CONCURRENCY: "8"
+      - name: Bootstrap notary from listings
+        run: node scripts/jobs/bootstrap-notary-from-listings.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Sync opportunity flags
+        run: node scripts/jobs/sync-listing-opportunities.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPPORTUNITY_CONCURRENCY: "16"
+          OPPORTUNITY_PAGE_SIZE: "250"

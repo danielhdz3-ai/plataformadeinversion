@@ -1,3 +1,5 @@
+import { readResponseJson } from "./http-json.mjs";
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function geocodeSpain(query) {
@@ -11,7 +13,12 @@ export async function geocodeSpain(query) {
     headers: { "User-Agent": "plataformadeinversion-scraper/1.0" },
   });
   if (!res.ok) return null;
-  const data = await res.json();
+  let data;
+  try {
+    data = await readResponseJson(res, "Nominatim search");
+  } catch {
+    return null;
+  }
   const hit = data?.[0];
   if (!hit) return null;
   const lat = Number(hit.lat);
@@ -38,7 +45,12 @@ export async function reverseGeocodeSpain(lat, lng) {
     headers: { "User-Agent": "plataformadeinversion-scraper/1.0" },
   });
   if (!res.ok) return null;
-  const data = await res.json();
+  let data;
+  try {
+    data = await readResponseJson(res, "Nominatim reverse");
+  } catch {
+    return null;
+  }
   const pc = data?.address?.postcode ?? null;
   const normalized = pc ? String(pc).replace(/\D/g, "").slice(0, 5) : null;
   return {

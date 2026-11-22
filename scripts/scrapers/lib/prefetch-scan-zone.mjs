@@ -74,7 +74,7 @@ export async function prefetchForScanPolygon(polygon) {
   }
 
   process.env.FOTOCASA_PER_ZONE = process.env.SCAN_FOTOCASA_PER_ZONE ?? "120";
-  process.env.FOTOCASA_MAX_PAGES = process.env.SCAN_FOTOCASA_MAX_PAGES ?? "10");
+  process.env.FOTOCASA_MAX_PAGES = process.env.SCAN_FOTOCASA_MAX_PAGES ?? "10";
   const pisosPer = Number(process.env.SCAN_PISOS_PER_DISTRICT ?? "90");
   const pisosPages = Number(process.env.SCAN_PISOS_MAX_PAGES ?? "8");
   const pisosCap = Number(process.env.SCAN_PISOS_MAX_DISTRICTS ?? "10");

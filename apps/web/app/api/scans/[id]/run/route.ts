@@ -14,6 +14,9 @@ import {
   prefetchScanZoneInventory,
   precomputeRoiForPolygon,
 } from "@/lib/scrape/prefetch-scan-zone.server";
+import { refreshPostalCodeLive } from "@/lib/scrape/scrape-postal-code.server";
+import { geocodeSpainQuery, reverseGeocodeSpain } from "@/lib/map/geocode-spain";
+import { portalsForCpLiveImport } from "@/lib/scrape/cp-live-portals";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDbClient, requireAppUser } from "@/lib/supabase/request-client";
 import { after, NextResponse } from "next/server";
@@ -51,19 +54,45 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   await supabase.from("scans").update({ status: "running", progress_pct: 5 }).eq("id", id);
 
+  let actionsDispatched = false;
   if (shouldOffloadScanIngestToActions()) {
-    const dispatched = await triggerScanZoneIngestWorkflow(id);
-    if (dispatched) {
-      await supabase
-        .from("scans")
-        .update({
-          progress_pct: 10,
-          error_message: "Importación en GitHub Actions (hasta ~90 min). Esta página se actualiza sola.",
-        })
-        .eq("id", id);
-      return NextResponse.json({ ok: true, status: "running", ingest: "github_actions" }, { status: 202 });
+    actionsDispatched = await triggerScanZoneIngestWorkflow(id);
+  }
+
+  let scanPostalCode: string | undefined;
+  try {
+    const ring = polygon.coordinates[0];
+    if (ring?.length) {
+      const lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+      const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+      const rev = await reverseGeocodeSpain(lat, lng);
+      let cp = rev?.label.match(/\b(\d{5})\b/)?.[1];
+      if (!cp) {
+        const hits = await geocodeSpainQuery(`${lat.toFixed(5)},${lng.toFixed(5)}`);
+        cp = hits[0]?.label.match(/\b(\d{5})\b/)?.[1];
+      }
+      if (cp) {
+        scanPostalCode = cp;
+        await supabase
+          .from("scans")
+          .update({ progress_pct: 8, error_message: "Scrape en vivo (CP) antes del ranking…" })
+          .eq("id", id);
+        await refreshPostalCodeLive(cp, { portals: portalsForCpLiveImport(), force: true });
+      }
     }
-    console.warn("scan ingest Actions dispatch failed, falling back to Vercel after()");
+  } catch (e) {
+    console.warn("scan sync cp scrape", id, e);
+  }
+
+  if (actionsDispatched) {
+    await supabase
+      .from("scans")
+      .update({
+        progress_pct: 12,
+        error_message:
+          "Scrape en curso en la nube + importación profunda en GitHub Actions. La página se actualiza sola.",
+      })
+      .eq("id", id);
   }
 
   after(async () => {
@@ -79,7 +108,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         reason: "not_started",
       };
       try {
-        ingest = await prefetchScanZoneInventory(polygon, { scanId: id, portals });
+        ingest = await prefetchScanZoneInventory(polygon, {
+          scanId: id,
+          portals,
+          postalCode: scanPostalCode,
+        });
         console.info("zone ingest", id, ingest);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

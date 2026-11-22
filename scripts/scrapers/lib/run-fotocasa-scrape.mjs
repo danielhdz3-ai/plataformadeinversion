@@ -71,6 +71,11 @@ export async function runFotocasaSale(options = {}) {
           }
           if (lon == null || lat == null) continue;
 
+          if (options.cityBbox) {
+            const [minLng, minLat, maxLng, maxLat] = options.cityBbox;
+            if (lon < minLng || lon > maxLng || lat < minLat || lat > maxLat) continue;
+          }
+
           const payload = {
             source_portal: PORTAL,
             source_external_id: mapped.externalId,

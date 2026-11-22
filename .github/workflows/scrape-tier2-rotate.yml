@@ -24,6 +24,8 @@ jobs:
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '12' }}
           MAX_LISTINGS: "220"
           PISOS_MAX_PAGES: "25"
+          FOTOCASA_MAX_PAGES: "14"
+          FOTOCASA_PER_ZONE: "220"
           PAUSE_MS: "3000"
           SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

@@ -12,6 +12,7 @@ import { reverseGeocodeSpain } from "./geocode-es.mjs";
 import { ALL_SALE_PORTAL_IDS, normalizeIngestPortals, portalEnabled } from "./all-portals.mjs";
 import { ingestExtraPortals } from "./ingest-extra-portals.mjs";
 import { tagListingsForPostalCode } from "./tag-listings-for-cp.mjs";
+import { normalizeScanPolygonInput, polygonGeojsonText, polygonScanBbox } from "./scan-polygon.mjs";
 
 export const RESIDENTIAL_PORTALS = ALL_SALE_PORTAL_IDS;
 
@@ -34,7 +35,7 @@ async function ingestDistricts(resolved, portals, anchor) {
 
   if (portalEnabled(portals, "fotocasa")) {
     process.env.FOTOCASA_PER_ZONE = process.env.SCAN_FOTOCASA_PER_ZONE ?? "150";
-    process.env.FOTOCASA_MAX_PAGES = process.env.SCAN_FOTOCASA_MAX_PAGES ?? "12");
+    process.env.FOTOCASA_MAX_PAGES = process.env.SCAN_FOTOCASA_MAX_PAGES ?? "12";
     portalResults.fotocasa = await runFotocasaSale({
       citySlug: "zone-ingest",
       zones: resolved.zones.map((z) => ({
@@ -86,9 +87,14 @@ export async function ingestZoneForPolygon(polygon, options = {}) {
   const supabase = getSupabase();
   const ingestStartedAt = new Date();
   const startedIso = ingestStartedAt.toISOString();
-  const geojson = JSON.stringify(polygon);
+  const polygonNorm = normalizeScanPolygonInput(polygon);
+  if (!polygonNorm) {
+    return { ok: false, error: "Polígono de scan inválido" };
+  }
+  const geojson = polygonGeojsonText(polygonNorm);
+  const scanBbox = polygonScanBbox(polygonNorm, 2);
   const portals = portalsFromEnv(options.portals);
-  const resolved = resolveZonesForPolygon(polygon, options);
+  const resolved = resolveZonesForPolygon(polygonNorm, options);
   const anchor = resolved.center;
   const cityZone = resolved.anchorCity ?? resolved.zones[0] ?? null;
   const zoneSlugs = resolved.zones.map((z) => z.slug).filter(Boolean);
@@ -121,16 +127,23 @@ export async function ingestZoneForPolygon(polygon, options = {}) {
       postalCode = rev?.postalCode ?? null;
     }
     if (postalCode) {
-      portalResults.postalCode = await scrapeByPostalCode(postalCode, {
-        force: true,
-        portals,
-      });
-      upserted += portalResults.postalCode?.fotocasa?.inserted ?? 0;
-      upserted += portalResults.postalCode?.pisos?.inserted ?? 0;
-      upserted += portalResults.postalCode?.extra?.upserted ?? 0;
-      portalResults.postalTag = await tagListingsForPostalCode(postalCode, {
-        center: resolved.center,
-      });
+      try {
+        portalResults.postalCode = await scrapeByPostalCode(postalCode, {
+          force: true,
+          portals,
+        });
+        upserted += portalResults.postalCode?.fotocasa?.inserted ?? 0;
+        upserted += portalResults.postalCode?.pisos?.inserted ?? 0;
+        upserted += portalResults.postalCode?.extra?.upserted ?? 0;
+        portalResults.postalTag = await tagListingsForPostalCode(postalCode, {
+          center: resolved.center,
+        });
+      } catch (e) {
+        portalResults.postalCode = {
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
     }
 
     if (resolved.mode === "districts" && resolved.zones.length > 0) {
@@ -140,7 +153,7 @@ export async function ingestZoneForPolygon(polygon, options = {}) {
       Object.assign(portalResults, d.portalResults);
     }
 
-    const cityBoost = await ingestCityWide(cityZone, anchor, portals, portalEnabled);
+    const cityBoost = await ingestCityWide(cityZone, anchor, portals, portalEnabled, { scanBbox });
     upserted += cityBoost.upserted;
     portalResults.cityWide = cityBoost;
 
@@ -150,7 +163,7 @@ export async function ingestZoneForPolygon(polygon, options = {}) {
       boostRound++;
       process.env.SCAN_CITY_PISOS_MAX = String(650 + boostRound * 200);
       process.env.SCAN_CITY_PISOS_PAGES = String(36 + boostRound * 8);
-      const extra = await ingestCityWide(cityZone, anchor, portals, portalEnabled);
+      const extra = await ingestCityWide(cityZone, anchor, portals, portalEnabled, { scanBbox });
       upserted += extra.upserted;
       portalResults[`cityBoost${boostRound}`] = extra;
       inPolygonAfter = await countInPolygon(supabase, geojson);
@@ -169,11 +182,20 @@ export async function ingestZoneForPolygon(polygon, options = {}) {
 
     await touchListingsInPolygon(geojson, zoneSlugs.length ? zoneSlugs : [cityZone.slug], startedIso);
 
-    const { data: archived, error: archErr } = await supabase.rpc(
-      "archive_stale_listings_in_polygon",
-      { p_geojson: geojson, p_ingest_started_at: startedIso }
-    );
-    if (archErr) console.warn("archive_stale", archErr.message);
+    let archived = null;
+    let archErr = null;
+    const safeToArchive = upserted >= 8 && inPolygonAfter >= 25;
+    if (safeToArchive) {
+      const arch = await supabase.rpc("archive_stale_listings_in_polygon", {
+        p_geojson: geojson,
+        p_ingest_started_at: startedIso,
+      });
+      archived = arch.data;
+      archErr = arch.error;
+      if (archErr) console.warn("archive_stale", archErr.message);
+    } else {
+      portalResults.archiveSkipped = { reason: "weak_ingest", upserted, inPolygonAfter };
+    }
 
     inPolygonAfter = await countInPolygon(supabase, geojson);
 

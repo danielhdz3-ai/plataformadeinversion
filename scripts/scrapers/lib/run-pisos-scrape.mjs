@@ -71,7 +71,7 @@ export async function runPisosSale(citySlug, options = {}) {
         emptyPages++;
         continue;
       }
-      const parseOpts = { max: limit - parsed.length, bbox: city.bbox };
+      const parseOpts = { max: limit - parsed.length, bbox: options.bbox ?? city.bbox };
       if (postalCodeTarget) parseOpts.max = Math.min(limit - parsed.length, 80);
       if (city.regionPattern) parseOpts.regionPattern = city.regionPattern;
       const batch = parsePisosListingsFromHtml(await res.text(), parseOpts);
@@ -83,7 +83,21 @@ export async function runPisosSale(citySlug, options = {}) {
         parsed.push(row);
       }
     }
-    if (parsed.length === 0) throw new Error(`No listings parsed for ${city.slug}`);
+    if (parsed.length === 0) {
+      if (postalCodeTarget || options.bbox) {
+        await supabase
+          .from("scrape_runs")
+          .update({
+            status: "completed",
+            finished_at: new Date().toISOString(),
+            listings_inserted: 0,
+            error_message: "no_listings_in_bbox",
+          })
+          .eq("id", run.id);
+        return { ok: true, inserted: 0, cards: 0, city: city.slug };
+      }
+      throw new Error(`No listings parsed for ${city.slug}`);
+    }
 
     const cpRadiusKm = Number(process.env.SCAN_CP_PISOS_RADIUS_KM ?? "3.5");
     const anchorPt =

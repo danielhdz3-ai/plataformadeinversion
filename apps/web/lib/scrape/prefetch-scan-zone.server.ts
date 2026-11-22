@@ -19,7 +19,7 @@ export type ScanZoneIngestResult = {
 
 export async function prefetchScanZoneInventory(
   polygon: ScanPolygon,
-  options?: { scanId?: string; portals?: string[] }
+  options?: { scanId?: string; portals?: string[]; postalCode?: string }
 ): Promise<ScanZoneIngestResult> {
   if (process.env.SCAN_PREFETCH_ENABLED === "0") {
     return { skipped: true, reason: "disabled" };
@@ -40,13 +40,14 @@ export async function prefetchScanZoneInventory(
   const mod = await importScraperModule<{
     ingestZoneForPolygon: (
       p: ScanPolygon,
-      o: { scanId?: string; portals?: string[] }
+      o: { scanId?: string; portals?: string[]; postalCode?: string }
     ) => Promise<ScanZoneIngestResult>;
   }>("scripts/scrapers/lib/zone-ingest.mjs");
 
   return mod.ingestZoneForPolygon(polygon, {
     scanId: options?.scanId,
     portals: options?.portals,
+    postalCode: options?.postalCode,
   });
 }
 

@@ -7,6 +7,15 @@ import type { ListingSummary } from "@/lib/listing/summary-types";
 import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { portalBadge } from "@/lib/portals";
 import { SaveListingButton } from "@/components/listings/SaveListingButton";
+import {
+  DiscountPctBadge,
+  OpportunityScoreBadge,
+  OpportunityVerifiedBadge,
+  SellerKindBadge,
+  ScrapedAgeLabel,
+  ValuationSnippet,
+} from "@/components/listings/OpportunityBadges";
+import { computeOpportunityMetrics } from "@/lib/listing/opportunity-metrics";
 import { listingDetailHref } from "@/lib/listing/return-navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -33,6 +42,7 @@ export type PremiumListingCardProps = {
   roi?: number | null;
   rentEst?: number | null;
   sourceUrl?: string;
+  scrapedAt?: string | null;
   selected?: boolean;
   onHover?: () => void;
   summary?: ListingSummary | null;
@@ -42,6 +52,9 @@ export type PremiumListingCardProps = {
   onSelect?: () => void;
   /** Ruta scan/explorar para ?from= al abrir ficha completa */
   returnTo?: string | null;
+  /** Feed Oportunidades: badge + acciones Contactar / Analizar */
+  markedOpportunity?: boolean;
+  investorActions?: boolean;
 };
 
 export function PremiumListingCard({
@@ -58,6 +71,7 @@ export function PremiumListingCard({
   roi,
   rentEst,
   sourceUrl,
+  scrapedAt,
   selected,
   onHover,
   summary,
@@ -65,6 +79,8 @@ export function PremiumListingCard({
   compact = false,
   onSelect,
   returnTo,
+  markedOpportunity = false,
+  investorActions = false,
 }: PremiumListingCardProps) {
   const fichaHref = listingDetailHref(listingId, returnTo);
   const portal = portalBadge(sourcePortal);
@@ -85,6 +101,21 @@ export function PremiumListingCard({
 
   const displayRoi = summary?.roi.grossRoiPct ?? roi ?? null;
   const displayRent = summary?.roi.rentEstMonthly ?? rentEst ?? null;
+  const opportunity =
+    summary?.opportunity ??
+    computeOpportunityMetrics(
+      {
+        price,
+        sqm: effectiveSqm,
+        roi: displayRoi,
+        sourcePortal,
+        title: cleanTitle,
+        sourceUrl,
+        scrapedAt,
+        rentConfidence: summary?.roi.rentConfidence ?? null,
+      },
+      summary
+    );
   const priceM2 =
     summary?.pricePerSqm ??
     (effectiveSqm != null && effectiveSqm > 0 ? price / effectiveSqm : null);
@@ -112,6 +143,12 @@ export function PremiumListingCard({
       } ${onSelect ? "cursor-pointer" : ""}`}
     >
       <div className={`relative w-full shrink-0 overflow-hidden bg-neutral-100 ${imageHeight}`}>
+        <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap gap-1">
+          {markedOpportunity && <OpportunityVerifiedBadge />}
+          <DiscountPctBadge pct={opportunity.discountPct} />
+          <SellerKindBadge kind={opportunity.sellerKind} />
+          <OpportunityScoreBadge score={opportunity.opportunityScore} />
+        </div>
         <Link
           href={fichaHref}
           className="block h-full w-full"
@@ -165,14 +202,33 @@ export function PremiumListingCard({
               .join(" · ")}
           </p>
         )}
-        {specs && <p className="text-xs text-neutral-600">{specs}</p>}
-        <div className="flex flex-wrap items-end justify-between gap-2 pt-1">
-          <p className="text-lg font-bold tabular-nums text-neutral-950">{price.toLocaleString("es-ES")} €</p>
-          {displayRent != null && (
-            <p className="text-xs tabular-nums text-neutral-600">
-              {Math.round(displayRent).toLocaleString("es-ES")} €/mes est.
-            </p>
+        {specs && (
+          <p className="text-xs text-neutral-600">
+            {specs}
+            <ScrapedAgeLabel metrics={opportunity} />
+          </p>
+        )}
+        <div className="space-y-1 pt-1">
+          <ValuationSnippet
+            price={price}
+            valuationMid={opportunity.valuationMid}
+            discountPct={opportunity.discountPct}
+          />
+          {opportunity.valuationMid == null && (
+            <p className="text-lg font-bold tabular-nums text-neutral-950">{price.toLocaleString("es-ES")} €</p>
           )}
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            {displayRoi != null && (
+              <p className="text-xs font-semibold tabular-nums text-emerald-800">
+                Rentabilidad {displayRoi.toFixed(1)} %
+              </p>
+            )}
+            {displayRent != null && (
+              <p className="text-xs tabular-nums text-neutral-600">
+                {Math.round(displayRent).toLocaleString("es-ES")} €/mes est.
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
@@ -237,7 +293,34 @@ export function PremiumListingCard({
         </>
       )}
 
-      {sourceUrl && (
+      {investorActions && (
+        <div className="flex gap-2 border-t border-neutral-100 p-3">
+          {sourceUrl ? (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex-1 rounded-lg bg-orange-600 py-2 text-center text-xs font-semibold text-white hover:bg-orange-700"
+            >
+              Contactar
+            </a>
+          ) : (
+            <span className="flex-1 rounded-lg bg-neutral-200 py-2 text-center text-xs text-neutral-500">
+              Sin enlace
+            </span>
+          )}
+          <Link
+            href={fichaHref}
+            onClick={(e) => e.stopPropagation()}
+            className="flex-1 rounded-lg border border-orange-600 py-2 text-center text-xs font-semibold text-orange-700 hover:bg-orange-50"
+          >
+            Analizar
+          </Link>
+        </div>
+      )}
+
+      {sourceUrl && !investorActions && (
         <div className="border-t border-neutral-100 px-3 py-2">
           <a
             href={sourceUrl}

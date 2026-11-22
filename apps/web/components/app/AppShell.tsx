@@ -2,7 +2,6 @@
 
 import { AppIconRail } from "@/components/app/AppIconRail";
 import { NavIcon } from "@/components/app/NavIcon";
-import { PlatformStatsBar } from "@/components/app/PlatformStatsBar";
 import { APP_NAV, navItemActive } from "@/lib/app-nav";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -17,7 +16,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 bg-neutral-950 text-white">
         <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-6">
           <div className="flex items-center gap-2 text-sm">
-            <Link href="/app/scan/nuevo" className="font-semibold tracking-tight">
+            <Link href="/app/oportunidades" className="font-semibold tracking-tight">
               {name}
             </Link>
             {scanMode && (
@@ -35,7 +34,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-sm ${
-                    active ? "bg-white text-neutral-950" : "text-neutral-300 hover:text-white"
+                    active
+                      ? item.href.includes("oportunidades")
+                        ? "bg-orange-500 text-white"
+                        : "bg-white text-neutral-950"
+                      : item.href.includes("oportunidades")
+                        ? "text-orange-300 hover:text-orange-100"
+                        : "text-neutral-300 hover:text-white"
                   }`}
                 >
                   <NavIcon name={item.icon} className="h-4 w-4 opacity-90" />
@@ -45,7 +50,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
         </div>
-        <PlatformStatsBar />
       </header>
       <div className="flex min-h-0 flex-1">
         <AppIconRail />

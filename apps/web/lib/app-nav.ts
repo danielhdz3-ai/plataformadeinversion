@@ -7,6 +7,7 @@ export type AppNavItem = {
 };
 
 export const APP_NAV: AppNavItem[] = [
+  { href: "/app/oportunidades", label: "Oportunidades", icon: "opportunities" },
   { href: "/app/scan/nuevo", label: "Scan", icon: "scan" },
   { href: "/app/explorar", label: "Explorar", icon: "explore" },
   { href: "/app/calculator", label: "Calculadora", icon: "calculator" },
@@ -15,5 +16,6 @@ export const APP_NAV: AppNavItem[] = [
 
 export function navItemActive(pathname: string, href: string) {
   if (href.includes("/scan")) return pathname.startsWith("/app/scan");
+  if (href.includes("/oportunidades")) return pathname.startsWith("/app/oportunidades");
   return pathname.startsWith(href);
 }
