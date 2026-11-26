@@ -20,7 +20,11 @@ function ghToken(user) {
 }
 
 const repo = resolveGithubRepo();
-const candidates = [readGithubToken(), ghToken(), ghToken("danielhdz-ai")].filter(Boolean);
+const candidates = [
+  ...new Set(
+    [readGithubToken(), ghToken(), ghToken("danielhdz3-ai"), ghToken("danielhdz-ai")].filter(Boolean)
+  ),
+];
 
 if (candidates.length === 0) {
   console.error("No hay token válido (GH_TOKEN ni gh auth).");
