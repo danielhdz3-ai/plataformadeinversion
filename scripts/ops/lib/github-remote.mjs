@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 export const CANONICAL_GITHUB_REPO = "danielhdz4-ai/plataformadeinversion";
 
-export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
+export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 export function readGithubToken() {
   const fromEnv = process.env.GH_TOKEN?.trim();
