@@ -10,6 +10,7 @@ import { dryRun } from "./env.mjs";
 import { normalizeIngestPortals } from "./all-portals.mjs";
 import { ingestExtraPortals } from "./ingest-extra-portals.mjs";
 import { tagListingsForPostalCode } from "./tag-listings-for-cp.mjs";
+import { runPisosRent } from "./run-pisos-scrape.mjs";
 
 import { haversineKm } from "./geo.mjs";
 
@@ -48,8 +49,25 @@ async function countActiveByCp(supabase, postalCode) {
   return count ?? 0;
 }
 
-async function countByCpPortal(supabase, postalCode) {
-  const { data, error } = await supabase
+/** Alquileres activos con `last_seen_at` reciente en la ciudad (por `city` LIKE). */
+async function countFreshRentForCity(supabase, citySlug, maxAgeDays) {
+  if (!citySlug) return 0;
+  const { getCityConfig } = await import("./spain-city.mjs");
+  const city = getCityConfig(citySlug);
+  const needle = (city?.regionPattern ?? city?.name ?? citySlug).replace(/[%_]/g, "");
+  const since = new Date(Date.now() - maxAgeDays * 864e5).toISOString();
+  const { count, error } = await supabase
+    .from("listings")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "active")
+    .eq("operation", "rent")
+    .gte("last_seen_at", since)
+    .ilike("city", `%${needle.split(",")[0]}%`);
+  if (error) return 0;
+  return count ?? 0;
+}
+
+async function countByCpPortal(supabase, postalCode) {  const { data, error } = await supabase
     .from("listings")
     .select("source_portal")
     .eq("status", "active")
@@ -325,6 +343,22 @@ export async function scrapeByPostalCode(postalCode, options = {}) {
       ? await tagCpWide(cp, resolved.center)
       : await tagListingsForPostalCode(cp, { center: resolved.center });
 
+  // Comparables de alquiler: sin ellos el ROI cae a benchmark/heurístico.
+  let rent = null;
+  const rentDays = Number(process.env.SCRAPE_CP_RENT_MAX_AGE_DAYS ?? "45");
+  try {
+    const fresh = await countFreshRentForCity(supabase, resolved.anchorCity?.citySlug, rentDays);
+    const minFresh = Number(process.env.SCRAPE_CP_RENT_MIN_FRESH ?? "40");
+    if (fresh < minFresh) {
+      const r = await runPisosRent(resolved.anchorCity.citySlug);
+      rent = { refreshed: true, inserted: r.inserted ?? 0, freshBefore: fresh };
+    } else {
+      rent = { refreshed: false, freshBefore: fresh };
+    }
+  } catch (e) {
+    rent = { refreshed: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
   let roi = { candidates: 0, updated: 0 };
   try {
     const { ensureFreshRoi } = await import("./ensure-fresh-roi.mjs");
@@ -355,6 +389,7 @@ export async function scrapeByPostalCode(postalCode, options = {}) {
     pisos,
     extra,
     tagged,
+    rent,
     roi,
     nearby: { applied: rural, radiusKm: NEARBY_KM, cap: NEARBY_CAP, ...stats },
     boostRounds: boost,

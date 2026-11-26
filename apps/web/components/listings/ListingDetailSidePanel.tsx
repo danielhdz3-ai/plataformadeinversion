@@ -7,6 +7,7 @@ import { NeighborhoodGauge } from "@/components/listings/NeighborhoodGauge";
 import { RoomRentComparablesPanel } from "@/components/listings/RoomRentComparablesPanel";
 import { NotariadoPortalPanel } from "@/components/notariado/NotariadoPortalPanel";
 import { decodeListingTitle } from "@/lib/decode-html";
+import { cleanListingTitle } from "@/lib/listing/display-title";
 import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import type { ListingSummary } from "@/lib/listing/summary-types";
 import { portalBadge } from "@/lib/portals";
@@ -26,6 +27,7 @@ import { useEffect, useMemo, useState } from "react";
 export type SidePanelListing = {
   id: string;
   title: string | null;
+  propertyKind?: string | null;
   price: number;
   city?: string | null;
   sourcePortal?: string | null;
@@ -154,7 +156,7 @@ export function ListingDetailSidePanel({
   }
 
   const portal = portalBadge(resolved.sourcePortal);
-  const title = decodeListingTitle(resolved.title ?? "Inmueble");
+  const title = cleanListingTitle(resolved.title ?? "Inmueble", resolved.propertyKind ?? null);
   const imgSrc = proxiedThumb(resolved.thumbnailUrl);
   const effectiveSqm = resolveListingSqm(resolved.sqm, resolved.title);
   const specs = [

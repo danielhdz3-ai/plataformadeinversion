@@ -25,3 +25,19 @@ export async function ensureFreshRoi(cp: string): Promise<EnsureRoiResult> {
     return { candidates: 0, updated: 0, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+/** Igual que `ensureFreshRoi` pero para varios CP (cron de alquiler). */
+export async function ensureFreshRoiForZone(cps: string[]): Promise<{
+  cps: number;
+  updated: number;
+  errors: number;
+}> {
+  let updated = 0;
+  let errors = 0;
+  for (const cp of cps) {
+    const r = await ensureFreshRoi(cp);
+    if (r.error) errors++;
+    updated += r.updated ?? 0;
+  }
+  return { cps: cps.length, updated, errors };
+}

@@ -1,4 +1,4 @@
-import { decodeListingTitle } from "@/lib/decode-html";
+import { cleanListingTitle } from "@/lib/listing/display-title";
 import { cpRadiusSteps, ZONE_STOCK_TARGET } from "@/lib/map/cp-zone-stock";
 import { grossRoiForDisplay } from "@/lib/listing/display-roi";
 import { buildSummariesBatch } from "@/lib/listing/build-summaries-batch";
@@ -183,6 +183,16 @@ export async function loadZoneOpportunityFeed(
     if (rpcRows.length >= ZONE_STOCK_TARGET) break;
     if (offset > 0 && rpcRows.length > offset) break;
   }
+  /**
+   * Fallback ciudad (Madrid): un CP urbano cubre una fracción del municipio y el
+   * portal solo publica una parte; si el CP no llega al objetivo, ampliamos al
+   * municipio para que el mapa no aparezca vacío.
+   */
+  const cityRadiusM = Number(process.env.ZONE_CITY_FALLBACK_M ?? "18000");
+  if (rpcRows.length < ZONE_STOCK_TARGET && radiusM < cityRadiusM) {
+    radiusM = cityRadiusM;
+    rpcRows = await listingIdsInZone(supabase, opts.lat, opts.lng, opts.cp, radiusM, maxRows);
+  }
   const pinById = new Map(rpcRows.map((r) => [r.id, { lng: r.lng, lat: r.lat }]));
   const ids = rpcRows.map((r) => r.id);
   const exactTagged = rpcRows.filter((r) => r.postal_code === opts.cp).length;
@@ -272,8 +282,7 @@ export async function loadZoneOpportunityFeed(
     const pin = pinById.get(row.id);
     items.push({
       id: row.id,
-      title: decodeListingTitle(r.title as string),
-      city: r.city as string | null,
+      title: cleanListingTitle(r.title as string, r.property_kind as string | null),
       postalCode: r.postal_code as string | null,
       price: row.price,
       sqm: row.sqm,

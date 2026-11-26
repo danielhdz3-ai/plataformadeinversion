@@ -1,4 +1,5 @@
 import { getDbClient, requireAppUser } from "@/lib/supabase/request-client";
+import { USER_DB_ERROR } from "@/lib/ops/db-api-errors";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -32,8 +33,13 @@ export async function GET(req: NextRequest) {
 
   if (error) {
     const missing = /census_sections|function/i.test(error.message);
+    if (!missing) console.error("[api/map/census-sections]", error.message);
     return NextResponse.json(
-      { error: missing ? "Capa INE aún no desplegada (migración pendiente)" : error.message },
+      {
+        error: missing
+          ? "La capa de datos del INE todavía no está disponible en esta zona."
+          : USER_DB_ERROR,
+      },
       { status: missing ? 503 : 500 }
     );
   }

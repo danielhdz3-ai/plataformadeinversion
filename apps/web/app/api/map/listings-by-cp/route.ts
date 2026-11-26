@@ -1,4 +1,4 @@
-import { decodeListingTitle } from "@/lib/decode-html";
+import { cleanListingTitle } from "@/lib/listing/display-title";
 import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { resolveListingGrossRoiPct } from "@/lib/listing/gross-roi";
 import { resolveRentEstMonthly } from "@/lib/listing/rent-est";
@@ -13,6 +13,7 @@ import { refreshPostalCodeLive } from "@/lib/scrape/scrape-postal-code.server";
 import { fetchListingRowsInChunks } from "@/lib/supabase/fetch-in-chunks";
 import { getDbClient, requireAppUser } from "@/lib/supabase/request-client";
 import { after, NextRequest, NextResponse } from "next/server";
+import { publicDbError } from "@/lib/ops/db-api-errors";
 
 /** Importación en vivo por CP (España) — puede tardar varios minutos. */
 export const maxDuration = 300;
@@ -66,7 +67,16 @@ export async function GET(req: NextRequest) {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      return NextResponse.json({ error: msg, code: "SCRAPE", postalCode: cp }, { status: 502 });
+      return NextResponse.json(
+        {
+          error: publicDbError("api/map/listings-by-cp/scrape", msg, {
+            userMessage: "No pudimos buscar nuevas viviendas en este momento. Vuelve en unos minutos.",
+          }),
+          code: "SCRAPE",
+          postalCode: cp,
+        },
+        { status: 502 }
+      );
     }
   }
 
@@ -124,7 +134,7 @@ export async function GET(req: NextRequest) {
       if (error) {
         if (/listings_for_postal_code|function/i.test(error.message)) {
           return NextResponse.json(
-            { error: "Función CP no desplegada", code: "MIGRATION" },
+            { error: "Esta zona aún no está habilitada. Prueba con otro código postal.", code: "MIGRATION" },
             { status: 503 }
           );
         }
@@ -136,7 +146,10 @@ export async function GET(req: NextRequest) {
       }
     }
     if (batchErr) {
-      return NextResponse.json({ error: batchErr, code: "DB" }, { status: 500 });
+      return NextResponse.json(
+        { error: publicDbError("api/map/listings-by-cp", batchErr), code: "DB" },
+        { status: 500 }
+      );
     }
     if (merged.size >= ZONE_STOCK_TARGET) break;
   }
@@ -159,6 +172,7 @@ export async function GET(req: NextRequest) {
   type MetaRow = {
     id: string;
     title: string | null;
+    property_kind?: string | null;
     source_url: string | null;
     city: string | null;
     thumbnail_url: string | null;
@@ -177,7 +191,7 @@ export async function GET(req: NextRequest) {
     meta = await fetchListingRowsInChunks<MetaRow>(
       supabase,
       "listings",
-      "id, title, source_url, city, thumbnail_url, bedrooms, bathrooms, sqm, scraped_at, listing_investment(rent_est, rent_confidence)",
+      "id, title, property_kind, source_url, city, thumbnail_url, bedrooms, bathrooms, sqm, scraped_at, listing_investment(rent_est, rent_confidence)",
       ids
     );
   }
@@ -204,7 +218,7 @@ export async function GET(req: NextRequest) {
       rentConfidence: row.rent_confidence ?? invRow?.rent_confidence ?? null,
       source: row.source_portal,
       postalCode: row.postal_code,
-      title: decodeListingTitle(m?.title ?? null),
+      title: cleanListingTitle(m?.title ?? null, m?.property_kind ?? null),
       sourceUrl: m?.source_url ?? null,
       city: m?.city ?? null,
       thumbnailUrl: m?.thumbnail_url ?? null,

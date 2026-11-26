@@ -18,6 +18,11 @@ const CHIPS: {
     isActive: (f) => (f.minDiscountPct ?? 0) >= 12 && (f.minOpportunityScore ?? 0) >= 65,
   },
   {
+    label: "Chollos −20 % o más",
+    apply: (f) => ({ ...f, minDiscountPct: 20, minOpportunityScore: 0, maxScrapedAgeDays: 0 }),
+    isActive: (f) => (f.minDiscountPct ?? 0) >= 20 && (f.minOpportunityScore ?? 0) === 0,
+  },
+  {
     label: "≤ 60.000 €",
     apply: (f) => ({ ...f, priceMax: 60_000, priceMin: 0 }),
     isActive: (f) => (f.priceMax ?? 0) <= 60_000,

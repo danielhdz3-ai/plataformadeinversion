@@ -173,11 +173,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         const msg = e instanceof Error ? e.message : String(e);
         ingest = { ok: false, error: msg };
         console.error("zone ingest throw", id, e);
+        // Solo logs internos: el usuario ve progreso, nunca el error técnico.
         await admin
           .from("scans")
-          .update({
-            error_message: `Importación acotada (${msg}). Ranking con inventario ya en base de datos…`,
-          })
+          .update({ progress_pct: 40 })
           .eq("id", id);
       }
 
@@ -212,7 +211,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           .update({
             status: "failed",
             progress_pct: 0,
-            error_message: msg.slice(0, 480) || "Error en scan",
+            error_message: null,
           })
           .eq("id", id);
       }

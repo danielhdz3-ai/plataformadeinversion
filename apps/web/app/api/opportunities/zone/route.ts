@@ -21,6 +21,7 @@ import {
   dbErrorFromUnknown,
   ensureSupabaseReachable,
   isLikelyUnreachable,
+  publicDbError,
   unreachableSupabasePayload,
 } from "@/lib/ops/db-api-errors";
 import { probeSupabase } from "@/lib/ops/verify-supabase";
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.message, code: "VALIDATION" }, { status: 400 });
+    return NextResponse.json({ error: "Los datos de la zona no son válidos.", code: "VALIDATION" }, { status: 400 });
   }
 
   const { lat, lng, waitScrape, chollosOnly } = parsed.data;  const limit = Math.min(400, parsed.data.limit ?? 400);
@@ -211,7 +212,7 @@ export async function POST(req: NextRequest) {
       const probe = await probeSupabase();
       return NextResponse.json(unreachableSupabasePayload(probe), { status: 503 });
     }
-    return NextResponse.json({ error: message, code: "DB" }, { status: 500 });
+    return NextResponse.json({ error: publicDbError("api/opportunities/zone", message), code: "DB" }, { status: 500 });
   }
 }
 

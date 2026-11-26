@@ -1,5 +1,9 @@
 import { dryRun, getSupabase, maxListings } from "./env.mjs";
-import { fetchPisosDetailFields, parsePisosListingsFromHtml } from "./parse-pisos-ld.mjs";
+import {
+  fetchPisosDetailFields,
+  parsePisosListingsFromHtml,
+  postalCodeFromPisosUrl,
+} from "./parse-pisos-ld.mjs";
 import { isPlausibleMonthlyRent } from "./rent-plausible.mjs";
 import { nearAnchor, normalizeCp as normalizeCpShared } from "./cp-utils.mjs";
 import { getCityConfig } from "./spain-city.mjs";
@@ -140,6 +144,7 @@ export async function runPisosSale(citySlug, options = {}) {
         city: row.city ?? city.name,
         ccaa: city.ccaa,
         source_url: row.sourceUrl,
+        property_kind: row.propertyKind ?? null,
         geocode_quality: 4,
         status: "active",
         scraped_at: new Date().toISOString(),
@@ -265,10 +270,13 @@ export async function runPisosRent(citySlug) {
       const row = parsed[i];
       let rent = row.price;
       let sqm = row.sqm;
-      if (rent == null && row.sourceUrl) {
+      let bedrooms = row.bedrooms ?? null;
+      // El JSON-LD de pisos.com no trae precio ni m²: ficha cuando falte cualquiera.
+      if (row.sourceUrl && (rent == null || sqm == null || bedrooms == null)) {
         const detail = await fetchPisosDetailFields(row.sourceUrl);
-        if (detail?.price) rent = detail.price;
+        if (detail?.price && rent == null) rent = detail.price;
         if (detail?.sqm && sqm == null) sqm = detail.sqm;
+        if (detail?.bedrooms && bedrooms == null) bedrooms = detail.bedrooms;
       }
       if (rent == null || !isPlausibleMonthlyRent(rent)) continue;
       const payload = {
@@ -278,14 +286,15 @@ export async function runPisosRent(citySlug) {
         title: row.title,
         price: rent,
         sqm: sqm ?? null,
-        bedrooms: row.bedrooms ?? null,
-        postal_code: row.postalCode ?? null,
+        bedrooms: bedrooms,
+        postal_code: row.postalCode ?? postalCodeFromPisosUrl(row.sourceUrl) ?? null,
         city: row.city ?? city.name,
         ccaa: city.ccaa,
         source_url: row.sourceUrl,
         thumbnail_url: row.thumbnail ?? null,
         status: "active",
         geocode_quality: 4,
+        last_seen_at: new Date().toISOString(),
       };
       if (dryRun()) {
         inserted++;

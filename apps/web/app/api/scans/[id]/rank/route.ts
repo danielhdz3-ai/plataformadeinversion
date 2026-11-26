@@ -1,4 +1,5 @@
 import { isOpenAccess } from "@/lib/open-access";
+import { publicDbError } from "@/lib/ops/db-api-errors";
 import { completeScanAfterIngest } from "@/lib/scan/complete-scan-after-ingest";
 import type { ScanPolygon } from "@/lib/scan/types";
 import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
@@ -64,6 +65,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ ok: true, status: "completed" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: publicDbError("api/scans/rank", msg, {
+          userMessage: "No se pudo completar el ranking. Inténtalo de nuevo.",
+        }),
+      },
+      { status: 500 }
+    );
   }
 }

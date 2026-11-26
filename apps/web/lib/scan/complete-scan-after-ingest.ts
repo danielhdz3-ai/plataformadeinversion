@@ -4,6 +4,7 @@ import { normalizeScanFilters } from "@/lib/scan/apply-scan-filters";
 import { runScanForPolygon } from "@/lib/scan/runScan";
 import { defaultPortalToggles, selectedPortals } from "@/lib/scan/portal-options";
 import { SCAN_ZONE_SOFT_WARN_BELOW } from "@/lib/scan/zone-target";
+import { lowStockNotice } from "@/lib/scan/user-facing-messages";
 import type { ScanZoneIngestResult } from "@/lib/scrape/prefetch-scan-zone.server";
 import type { ScanPolygon } from "@/lib/scan/types";
 import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
@@ -57,11 +58,9 @@ export async function completeScanAfterIngest(
   ) {
     await admin
       .from("scans")
-      .update({
-        error_message: `Zona con ${ingest.inPolygonAfter} ventas en mapa (objetivo ${ingest.target}). Repite el scan o amplía el radio.`,
-      })
+      .update({ error_message: lowStockNotice(ingest.inPolygonAfter) })
       .eq("id", scanId);
-  } else if (ingest.ok !== false && !ingest.error) {
+  } else {
     await admin.from("scans").update({ error_message: null }).eq("id", scanId);
   }
 }

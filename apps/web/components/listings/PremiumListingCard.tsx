@@ -3,6 +3,7 @@
 import { ListingAiAnalysisBlock } from "@/components/listings/ListingAiAnalysisBlock";
 import { ListingResumenPanel } from "@/components/listings/ListingResumenPanel";
 import { decodeListingTitle } from "@/lib/decode-html";
+import { cleanListingTitle } from "@/lib/listing/display-title";
 import type { ListingSummary } from "@/lib/listing/summary-types";
 import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { portalBadge } from "@/lib/portals";
@@ -84,7 +85,7 @@ export function PremiumListingCard({
 }: PremiumListingCardProps) {
   const fichaHref = listingDetailHref(listingId, returnTo);
   const portal = portalBadge(sourcePortal);
-  const cleanTitle = decodeListingTitle(title);
+  const cleanTitle = cleanListingTitle(title, null);
   const imgSrc = proxiedThumb(thumbnailUrl);
   const [thumbFailed, setThumbFailed] = useState(false);
   useEffect(() => setThumbFailed(false), [thumbnailUrl]);
@@ -212,6 +213,8 @@ export function PremiumListingCard({
           <ValuationSnippet
             price={price}
             valuationMid={opportunity.valuationMid}
+            valuationLow={opportunity.valuationLow}
+            valuationHigh={opportunity.valuationHigh}
             discountPct={opportunity.discountPct}
           />
           {opportunity.valuationMid == null && (

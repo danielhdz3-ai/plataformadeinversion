@@ -34,7 +34,7 @@ export async function GET() {
         if (sample?.id) {
           const { error: rpcErr } = await admin.rpc("rent_comparables_near", {
             p_listing_id: sample.id,
-            max_m: 500,
+            max_m: 1200,
             lim: 1,
           });
           spatialRpcReady = !rpcErr;

@@ -20,7 +20,7 @@ const bodySchema = z.object({
 export async function POST(req: NextRequest) {
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+    return NextResponse.json({ error: "Los datos solicitados no son válidos." }, { status: 400 });
   }
 
   const supabase = await getDbClient();
@@ -39,7 +39,10 @@ export async function POST(req: NextRequest) {
     )
     .in("id", ids);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[api/listings/summary]", error.message);
+    return NextResponse.json({ error: "No se pudieron cargar las viviendas." }, { status: 500 });
+  }
 
   const postals = [...new Set((listings ?? []).map((l) => l.postal_code).filter(Boolean))] as string[];
   const notaryByPostal = new Map<string, Record<string, unknown>>();
@@ -85,8 +88,8 @@ export async function POST(req: NextRequest) {
       ids.map(async (id) => {
         const { data: comps, error: compErr } = await supabase.rpc("rent_comparables_near", {
           p_listing_id: id,
-          max_m: roomMode ? 2500 : 500,
-          lim: roomMode ? 24 : 8,
+          max_m: roomMode ? 2500 : 1200,
+          lim: roomMode ? 24 : 10,
         });
         if (compErr || !comps) {
           comparablesById.set(id, []);

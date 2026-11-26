@@ -1,4 +1,4 @@
-import { decodeListingTitle } from "@/lib/decode-html";
+import { cleanListingTitle } from "@/lib/listing/display-title";
 import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { resolveListingGrossRoiPct } from "@/lib/listing/gross-roi";
 import { resolveRentEstMonthly } from "@/lib/listing/rent-est";
@@ -18,6 +18,7 @@ import { getDbClient, requireAppUser } from "@/lib/supabase/request-client";
 import { filterListings, parseMapListingFilterParams } from "@/lib/map/map-listing-filters";
 import { EXPLORAR_MIN_ZOOM_FOR_BBOX } from "@/lib/map/cp-zone-stock";
 import { NextRequest, NextResponse } from "next/server";
+import { publicDbError } from "@/lib/ops/db-api-errors";
 
 export async function GET(req: NextRequest) {
   const auth = await requireAppUser();
@@ -66,7 +67,10 @@ export async function GET(req: NextRequest) {
   );
 
   if (loadError) {
-    return NextResponse.json({ error: loadError, code: "DB" }, { status: 500 });
+    return NextResponse.json(
+      { error: publicDbError("api/map/listings", loadError), code: "DB" },
+      { status: 500 }
+    );
   }
 
   let rows = loadedRows;
@@ -167,7 +171,7 @@ export async function GET(req: NextRequest) {
         geocodeQuality: row.geocode_quality ?? null,
         rentConfidence,
         source: (m?.source_portal as string) ?? null,
-        title: decodeListingTitle(m?.title as string),
+        title: cleanListingTitle(m?.title as string, (m?.property_kind as string) ?? null),
         sourceUrl: (m?.source_url as string) ?? null,
         city: (m?.city as string) ?? null,
         thumbnailUrl: (m?.thumbnail_url as string) ?? null,

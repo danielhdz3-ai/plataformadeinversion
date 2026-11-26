@@ -5,14 +5,15 @@ import { InteractiveMarketChart } from "@/components/listings/InteractiveMarketC
 import {
   OpportunityScoreBadge,
   SellerKindBadge,
-  ValuationSnippet,
+  PriceVsValuationHeadline,
 } from "@/components/listings/OpportunityBadges";
 import { ListingResumenPanel } from "@/components/listings/ListingResumenPanel";
+import { BeforeBuyingBlock, DealNumbersBlock } from "@/components/listings/DealNarrativeBlocks";
 import { NeighborhoodGauge } from "@/components/listings/NeighborhoodGauge";
 import { NotariadoPortalPanel } from "@/components/notariado/NotariadoPortalPanel";
 import { PriceValuationSlider } from "@/components/listings/PriceValuationSlider";
 import { SaveListingButton } from "@/components/listings/SaveListingButton";
-import { decodeListingTitle } from "@/lib/decode-html";
+import { cleanListingTitle } from "@/lib/listing/display-title";
 import type { ListingSummary } from "@/lib/listing/summary-types";
 import { portalBadge } from "@/lib/portals";
 import Link from "next/link";
@@ -21,6 +22,7 @@ import { useState } from "react";
 export type ListingDetailData = {
   id: string;
   title: string;
+  property_kind?: string | null;
   price: number;
   source_url: string;
   source_portal: string;
@@ -132,7 +134,7 @@ export function ListingDetailFullView({
               </span>
             </div>
             <h1 className="text-2xl font-bold leading-tight text-white sm:text-3xl">
-              {decodeListingTitle(listing.title)}
+              {cleanListingTitle(listing.title, listing.property_kind ?? null)}
             </h1>
             <p className="text-sm text-neutral-200">
               {listing.city} · CP {listing.postal_code}
@@ -146,16 +148,14 @@ export function ListingDetailFullView({
         <div className="shrink-0 border-b border-neutral-200 bg-white px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <ValuationSnippet
+              <PriceVsValuationHeadline
                 price={price}
                 valuationMid={summary?.opportunity.valuationMid ?? null}
+                valuationLow={summary?.opportunity.valuationLow ?? null}
+                valuationHigh={summary?.opportunity.valuationHigh ?? null}
                 discountPct={summary?.opportunity.discountPct ?? null}
+                propertyLabel="esta vivienda"
               />
-              {!summary?.opportunity?.valuationMid && (
-                <p className="text-3xl font-bold tabular-nums tracking-tight text-neutral-950">
-                  {price.toLocaleString("es-ES")} €
-                </p>
-              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {roi != null && (
@@ -224,9 +224,13 @@ export function ListingDetailFullView({
             <div className="space-y-6">
               <ListingAiAnalysisBlock listingId={listing.id} autoLoadCache />
               {summary && (
-                <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-                  <ListingResumenPanel summary={summary} listingId={listing.id} embedded showAi={false} />
-                </div>
+                <>
+                  <DealNumbersBlock summary={summary} price={price} />
+                  <BeforeBuyingBlock summary={summary} price={price} />
+                  <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+                    <ListingResumenPanel summary={summary} listingId={listing.id} embedded showAi={false} />
+                  </div>
+                </>
               )}
             </div>
           )}

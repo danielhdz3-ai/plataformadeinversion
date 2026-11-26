@@ -1,4 +1,4 @@
-import { decodeListingTitle } from "@/lib/decode-html";
+import { cleanListingTitle } from "@/lib/listing/display-title";
 import { grossRoiForDisplay } from "@/lib/listing/display-roi";
 import { buildSummariesBatch } from "@/lib/listing/build-summaries-batch";
 import type { ListingSummary } from "@/lib/listing/summary-types";
@@ -16,6 +16,7 @@ import {
   dbErrorFromUnknown,
   ensureSupabaseReachable,
   isLikelyUnreachable,
+  publicDbError,
   unreachableSupabasePayload,
 } from "@/lib/ops/db-api-errors";
 import { probeSupabase } from "@/lib/ops/verify-supabase";
@@ -48,7 +49,7 @@ function invRow(raw: unknown): Inv | null {
 function rowToItem(r: Record<string, unknown>, summary: ListingSummary) {
   return {
     id: r.id as string,
-    title: decodeListingTitle(r.title as string),
+    title: cleanListingTitle(r.title as string, r.property_kind as string | null),
     city: r.city as string | null,
     postalCode: r.postal_code as string | null,
     price: Number(r.price),
@@ -310,6 +311,6 @@ export async function GET(req: NextRequest) {
       const probe = await probeSupabase();
       return NextResponse.json(unreachableSupabasePayload(probe), { status: 503 });
     }
-    return NextResponse.json({ error: message, code: "DB" }, { status: 500 });
+    return NextResponse.json({ error: publicDbError("api/opportunities", message), code: "DB" }, { status: 500 });
   }
 }

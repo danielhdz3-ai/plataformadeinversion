@@ -35,7 +35,7 @@ async function zippopotamFallback(postal: string) {
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q")?.trim();
   if (!q || q.length < 2) {
-    return NextResponse.json({ error: "Query too short" }, { status: 400 });
+    return NextResponse.json({ error: "Escribe al menos 2 caracteres para buscar." }, { status: 400 });
   }
 
   try {
@@ -56,6 +56,6 @@ export async function GET(req: NextRequest) {
       const fallback = await zippopotamFallback(pc);
       if (fallback.length) return NextResponse.json({ results: fallback });
     }
-    return NextResponse.json({ error: "Geocoder unavailable" }, { status: 502 });
+    return NextResponse.json({ error: "La búsqueda no está disponible ahora mismo." }, { status: 502 });
   }
 }

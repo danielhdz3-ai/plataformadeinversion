@@ -23,6 +23,7 @@ import { parseScanPolygon } from "@/lib/map/parse-scan-polygon";
 import { SPAIN_VIEW } from "@/lib/map/spain-bounds";
 import { scanOperationUsesRoi } from "@/lib/investment/operations";
 import { SCAN_ZONE_SOFT_WARN_BELOW, SCAN_ZONE_TARGET_IN_POLYGON } from "@/lib/scan/zone-target";
+import { safeScanMessage } from "@/lib/scan/user-facing-messages";
 import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
 import { filtersToUrlSearchParams, mergeUrlFiltersInto } from "@/lib/filters/url-sync";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -143,7 +144,7 @@ function ScanResultsPageContent() {
       if (!cancelled) {
         setLoadError(null);
         setStatus(scan.status ?? "failed");
-        setScanErrorMessage(scan.error_message ?? null);
+        setScanErrorMessage(safeScanMessage(scan.error_message));
         setScanOperation(scan.operation ?? "buy_to_rent");
         if (scan.operation === "buy") setSort("price_asc");
         const parsedPoly = parseScanPolygon(scan.polygon);

@@ -1,4 +1,23 @@
-import { probeSupabase, type SupabaseProbe } from "@/lib/ops/verify-supabase";
+/** Mensaje al usuario: genérico, sin nombres de tablas, SQL ni hosts. */
+export const USER_DB_ERROR = "No se pudieron cargar los datos. Vuelve a intentarlo en unos segundos.";
+
+/** Mensaje al usuario para la base de datos inaccesible (mantenimiento/reintento). */
+export const USER_DB_MAINTENANCE =
+  "Estamos actualizando los datos. Vuelve a intentarlo en un par de minutos.";
+
+/**
+ * Registra el error técnico en servidor y devuelve una copia pública.
+ * El detalle solo se expone si `exposeDetail` (herramientas internas/ops).
+ */
+export function publicDbError(
+  scope: string,
+  raw: string,
+  options?: { exposeDetail?: boolean; userMessage?: string }
+): string {
+  console.error(`[${scope}]`, raw);
+  if (options?.exposeDetail) return raw;
+  return options?.userMessage ?? USER_DB_ERROR;
+}
 
 export function dbErrorFromUnknown(e: unknown): string {
   if (e instanceof Error) return e.message;
@@ -13,61 +32,30 @@ export function isLikelyUnreachable(message: string): boolean {
   return /fetch failed|ENOTFOUND|getaddrinfo|EAI_AGAIN|Connect Timeout/i.test(message);
 }
 
+type SupabaseProbe = { host?: string | null; reachable?: boolean; error?: string | null };
+
 export function unreachableSupabasePayload(probe: SupabaseProbe) {
   const host = probe.host ?? "desconocido";
-  const error = `Supabase inaccesible (${host}). ${probe.error ?? "Comprueba URL, claves y que el proyecto no esté pausado."}`;
+  console.error(`[supabase-unreachable] host=${host} error=${probe.error ?? "unknown"}`);
 
   return {
-    error,
+    error: USER_DB_MAINTENANCE,
     code: "SUPABASE_UNREACHABLE" as const,
     supabaseHost: host,
-    items: [] as unknown[],
-    totalQualified: 0,
   };
 }
 
-export type DbApiFailBody = {
-  error: string;
-  code: string;
-  supabaseHost?: string | null;
-  items: unknown[];
-  totalQualified: number;
-};
-
+/**
+ * Probe rápido antes de rutas pesadas: si la base no responde devolvemos
+ * 503 con mensaje de mantenimiento en lugar de un error técnico.
+ */
 export async function ensureSupabaseReachable(): Promise<
-  | { ok: true; probe: SupabaseProbe }
-  | { ok: false; status: number; body: DbApiFailBody }
+  | { ok: true }
+  | { ok: false; status: number; body: ReturnType<typeof unreachableSupabasePayload> }
 > {
+  const { probeSupabase } = await import("@/lib/ops/verify-supabase");
   const probe = await probeSupabase();
-  if (!probe.configured) {
-    return {
-      ok: false,
-      status: 503,
-      body: {
-        error: "Faltan variables Supabase en el servidor (URL o service role).",
-        code: "SUPABASE_UNREACHABLE",
-        supabaseHost: probe.host ?? undefined,
-        items: [],
-        totalQualified: 0,
-      },
-    };
-  }
-  if (!probe.reachable) {
-    return { ok: false, status: 503, body: unreachableSupabasePayload(probe) };
-  }
-  if (!probe.listingsOk && probe.error === "schema_missing_listings") {
-    return {
-      ok: false,
-      status: 503,
-      body: {
-        error:
-          "El proyecto Supabase está activo pero sin tablas. Ejecuta supabase/bootstrap-completo.sql en el SQL Editor (una vez) y vuelve a /api/health.",
-        code: "SCHEMA_MISSING",
-        supabaseHost: probe.host ?? null,
-        items: [],
-        totalQualified: 0,
-      },
-    };
-  }
-  return { ok: true, probe };
+  if (probe.reachable) return { ok: true };
+  return { ok: false, status: 503, body: unreachableSupabasePayload(probe) };
 }
+

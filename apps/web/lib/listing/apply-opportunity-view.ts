@@ -55,7 +55,8 @@ export function applyListingViewPipeline<T extends ViewListingRow>(
     const strict =
       (filters.minDiscountPct ?? 0) > 0 ||
       (filters.minOpportunityScore ?? 0) > 0 ||
-      (filters.sellerKinds?.length ?? 0) > 0;
+      (filters.sellerKinds?.length ?? 0) > 0 ||
+      (filters.maxScrapedAgeDays ?? 0) > 0;
     return listingMatchesOpportunityFilters(metrics, filters, {
       strictDiscount: strict,
       strictScore: strict,

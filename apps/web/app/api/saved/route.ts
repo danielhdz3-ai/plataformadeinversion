@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { publicDbError } from "@/lib/ops/db-api-errors";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -17,7 +18,12 @@ export async function GET() {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json(
+      { error: publicDbError("api/saved GET", error.message) },
+      { status: 500 }
+    );
+  }
   const items = (data ?? []).map((row) => ({
     id: row.id,
     listing: Array.isArray(row.listing) ? row.listing[0] : row.listing,
@@ -36,7 +42,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = postSchema.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+    return NextResponse.json({ error: "Solicitud no válida." }, { status: 400 });
   }
 
   const { error } = await supabase.from("saved_deals").insert({
@@ -46,7 +52,10 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     if (error.code === "23505") return NextResponse.json({ ok: true, saved: true });
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: publicDbError("api/saved POST", error.message, { userMessage: "No se pudo guardar la vivienda." }) },
+      { status: 500 }
+    );
   }
   return NextResponse.json({ ok: true, saved: true });
 }
@@ -70,6 +79,11 @@ export async function DELETE(req: NextRequest) {
     .eq("user_id", user.id)
     .eq("listing_id", parsed.data.listingId);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json(
+      { error: publicDbError("api/saved DELETE", error.message, { userMessage: "No se pudo quitar la vivienda de guardados." }) },
+      { status: 500 }
+    );
+  }
   return NextResponse.json({ ok: true, saved: false });
 }
