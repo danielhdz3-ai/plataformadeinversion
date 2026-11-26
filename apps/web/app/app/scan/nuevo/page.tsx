@@ -278,7 +278,7 @@ function NewScanPageContent() {
           {step === 0 && (
             <div className="mt-6 space-y-4">
               <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-neutral-200 bg-[#f7f6f3] px-3 py-2 text-sm">
+                <div className="rounded-lg border border-neutral-200 bg-[#f3f2ef] px-3 py-2 text-sm">
                   España · EUR (€)
                 </div>
                 <div className="rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-500">
@@ -291,7 +291,7 @@ function NewScanPageContent() {
               </p>
               <SpainLocationSearch value={query} onChange={setQuery} onPick={pickPlace} />
               {placeLabel && (
-                <p className="rounded-lg border border-neutral-200 bg-[#f7f6f3] px-3 py-2 text-sm text-neutral-800">
+                <p className="rounded-lg border border-neutral-200 bg-[#f3f2ef] px-3 py-2 text-sm text-neutral-800">
                   {placeLabel} · ~{areaKm2.toFixed(1)} km² (radio {radiusKm} km)
                 </p>
               )}
@@ -368,7 +368,7 @@ function NewScanPageContent() {
                   </button>
                 ))}
               </div>
-              <p className="rounded-lg bg-[#f7f6f3] p-3 text-sm text-neutral-700">
+              <p className="rounded-lg bg-[#f3f2ef] p-3 text-sm text-neutral-700">
                 {SCAN_OPERATIONS.find((o) => o.id === operation)?.description}
               </p>
               <div className="flex gap-2 pt-2">

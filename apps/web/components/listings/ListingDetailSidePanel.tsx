@@ -144,7 +144,7 @@ export function ListingDetailSidePanel({
   if (!resolved) {
     if (!showEmptyState) return null;
     return (
-      <aside className={`hidden xl:flex ${panelShell} bg-[#f7f6f3]`}>
+      <aside className={`hidden xl:flex ${panelShell} bg-[#f3f2ef]`}>
         <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
           <p className="text-sm font-medium text-neutral-800">Detalle del inmueble</p>
           <p className="mt-2 max-w-xs text-xs text-neutral-500">
@@ -185,7 +185,7 @@ export function ListingDetailSidePanel({
     <aside
       className={`${panelShell} fixed inset-y-0 right-0 z-50 shadow-2xl xl:static xl:z-auto xl:shadow-none`}
     >
-      <div className="shrink-0 border-b border-neutral-200 bg-[#f7f6f3]">
+      <div className="shrink-0 border-b border-neutral-200 bg-[#f3f2ef]">
         {imgSrc && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imgSrc} alt="" className="h-36 w-full object-cover" />

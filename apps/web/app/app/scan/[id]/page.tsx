@@ -431,7 +431,7 @@ function ScanResultsPageContent() {
         }
       />
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-        <aside className="flex min-h-0 w-full shrink-0 flex-col border-r border-neutral-200 bg-[#f7f6f3] lg:w-[min(380px,34vw)]">
+        <aside className="flex min-h-0 w-full shrink-0 flex-col border-r border-neutral-200 bg-[#f3f2ef] lg:w-[min(380px,34vw)]">
           {loadError && (
             <p className="mx-3 mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-900">
               {loadError}

@@ -35,7 +35,7 @@ export function ScanResultsToolbar({
   onPriceMaxChange: (v: number) => void;
 }) {
   const btn =
-    "rounded-md border border-neutral-300 bg-[#f7f6f3] px-3 py-1.5 text-xs font-medium text-neutral-900 hover:bg-white";
+    "rounded-md border border-neutral-300 bg-[#f3f2ef] px-3 py-1.5 text-xs font-medium text-neutral-900 hover:bg-white";
   return (
     <div className="flex shrink-0 flex-col gap-2 border-b border-neutral-200 bg-white px-4 py-2.5">
       <div className="flex flex-wrap items-center gap-2">

@@ -496,7 +496,7 @@ function ExplorarPageContent() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
       <aside
-        className={`flex min-h-0 flex-col border-r border-neutral-200 bg-[#f7f6f3] ${
+        className={`flex min-h-0 flex-col border-r border-neutral-200 bg-[#f3f2ef] ${
           mapMode ? "hidden w-full shrink-0 lg:flex lg:w-[min(380px,34vw)]" : "min-w-0 flex-1 lg:max-w-none lg:flex-[1.2]"
         }`}
       >

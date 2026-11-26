@@ -1,29 +1,26 @@
 "use client";
 
 import type { ListingSummary } from "@/lib/listing/summary-types";
-
-const fmtEur = (n: number | null | undefined) =>
-  n == null ? "—" : `${Math.round(n).toLocaleString("es-ES")} €`;
+import { dealNumbersFromSummary, fmtEur } from "@/lib/listing/deal-numbers";
 
 /**
  * "Los números": coste real de la operación (no solo el precio del anuncio).
- * Estimación con ITP del resumen; útil antes de negociar.
+ * Fórmula compartida con las tarjetas del feed — ver `deal-numbers.ts`.
  */
 export function DealNumbersBlock({ summary, price }: { summary: ListingSummary; price: number }) {
-  const itp = summary.roi.purchaseTaxPct;
-  const itpAmount = summary.roi.purchaseTaxAmount;
-  // Gastos habituales: notaría+registro (~1 %) y gestoría (~300 €).
-  const closingCosts = price * 0.01 + 300;
-  const totalCost = price + itpAmount + closingCosts;
-  const rent = summary.roi.rentEstMonthly;
-  const roiNet = rent != null && totalCost > 0 ? ((rent * 12 * 0.82) / totalCost) * 100 : null;
-  const cash = summary.roi.totalCashInvested;
+  const deal = dealNumbersFromSummary(summary, price);
+  const itp = deal.taxPct;
+  const closingCosts = deal.closingCosts;
+  const totalCost = deal.totalCost;
+  const roiNet = deal.netYieldPct;
+  const cash = deal.cashInvested;
+  const rent = deal.rentMonthly;
 
   const rows = [
     { label: "Precio del anuncio", value: fmtEur(price), sub: null },
     {
       label: `ITP (${itp.toFixed(1)} % sobre precio)`,
-      value: fmtEur(itpAmount),
+      value: fmtEur(deal.taxAmount),
       sub: "Calculado sobre el precio; Hacienda puede liquidar sobre el valor de referencia de Catastro si es mayor.",
     },
     {
@@ -68,7 +65,10 @@ export function DealNumbersBlock({ summary, price }: { summary: ListingSummary; 
           <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
             Inversión total con impuestos
           </p>
-          <p className="text-lg font-bold tabular-nums text-neutral-950">{fmtEur(cash)}</p>
+          <p className="text-lg font-bold tabular-nums text-neutral-950">{fmtEur(totalCost)}</p>
+          {cash > 0 && Math.abs(cash - totalCost) > 1 && (
+            <p className="text-[10px] text-neutral-500">Con reforma prevista: {fmtEur(cash)}</p>
+          )}
         </div>
         <div className="bg-white px-5 py-3">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">

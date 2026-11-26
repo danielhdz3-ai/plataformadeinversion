@@ -15,7 +15,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { fullscreen, toggle } = useAppFullscreen(isFullscreenRequested(searchParams?.toString() ?? null));
 
   return (
-    <div className="app-shell flex h-screen flex-col overflow-hidden bg-[#f7f6f3] text-neutral-950">
+    <div className="app-shell flex h-screen flex-col overflow-hidden bg-[#f3f2ef] text-neutral-950">
       <header className="sticky top-0 z-40 bg-neutral-950 text-white">
         <div className="app-header-bar flex items-center justify-between gap-4 px-4 py-3 md:px-6">
           <div className="flex items-center gap-2 text-sm">

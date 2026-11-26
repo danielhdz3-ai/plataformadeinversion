@@ -12,6 +12,7 @@ import { valuationDiscountCopy } from "@/lib/listing/valuation-copy";
 import { SaveListingButton } from "@/components/listings/SaveListingButton";
 import { grossRoiForDisplay } from "@/lib/listing/display-roi";
 import { formatScrapedAgeEs } from "@/lib/listing/opportunity-metrics";
+import { computeDealNumbers, fmtEur } from "@/lib/listing/deal-numbers";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -93,6 +94,7 @@ export function RadarOpportunityCard({
     );
 
   const score = opportunity.opportunityScore;
+  const displayRent = summary?.roi.rentEstMonthly ?? null;
   const isNew = opportunity.scrapedAgeDays != null && opportunity.scrapedAgeDays <= 7;
   const isRecent = !isNew && opportunity.scrapedAgeDays != null && opportunity.scrapedAgeDays <= 21;
   const ageLabel = formatScrapedAgeEs(opportunity.scrapedAgeDays);
@@ -102,6 +104,13 @@ export function RadarOpportunityCard({
     opportunity.valuationConfidence
   );
   const isAuction = opportunity.sellerKind === "auction";
+  const deal = computeDealNumbers({
+    price,
+    taxPct: summary?.roi.purchaseTaxPct,
+    taxAmount: summary?.roi.purchaseTaxAmount,
+    rentMonthly: displayRent ?? summary?.roi.rentEstMonthly ?? null,
+    cashInvested: summary?.roi.totalCashInvested,
+  });
 
   const specParts: string[] = [];
   if (effectiveSqm != null) specParts.push(`${effectiveSqm} m²`);
@@ -222,14 +231,32 @@ export function RadarOpportunityCard({
           <p className="text-xl font-bold tabular-nums text-neutral-950">
             {price.toLocaleString("es-ES")} €
           </p>
+          {deal && (
+            <p className="text-[11px] tabular-nums text-neutral-600">
+              Coste real {fmtEur(deal.totalCost)}
+              {deal.netYieldPct != null ? ` · neta ${deal.netYieldPct.toFixed(1)} %` : ""}
+            </p>
+          )}
         </div>
 
         {opportunity.valuationMid != null && (
           <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2">
-            <p className="text-[10px] font-medium text-emerald-900/70">Valoración</p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-[10px] font-medium text-emerald-900/70">Valoración</p>
+              {opportunity.discountPct != null && opportunity.discountPct > 3 && (
+                <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white">
+                  −{Math.round(opportunity.discountPct)} %
+                </span>
+              )}
+            </div>
             <p className="text-sm font-semibold tabular-nums text-emerald-950">
               ≈ {opportunity.valuationMid.toLocaleString("es-ES")} €
             </p>
+            {opportunity.valuationLow != null && opportunity.valuationHigh != null && (
+              <p className="text-[10px] tabular-nums text-emerald-900/70">
+                {opportunity.valuationLow.toLocaleString("es-ES")}–{opportunity.valuationHigh.toLocaleString("es-ES")} €
+              </p>
+            )}
           </div>
         )}
 

@@ -13,6 +13,7 @@ import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
 import { defaultListingFilters } from "@/lib/scan/listing-filter-defaults";
 import { portalBadge } from "@/lib/portals";
 import { ZoneWatchesPanel } from "@/components/zone/ZoneWatchesPanel";
+import { AppEmptyState, AppPillButton } from "@/components/ui/AppPage";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -124,7 +125,11 @@ export default function GuardadosPage() {
       )}
 
       {!needsAuth && items.length === 0 && (
-        <p className="mt-6 text-neutral-600">Aún no has guardado oportunidades. Usa «Guardar» en el mapa o en un scan.</p>
+        <AppEmptyState
+          title="Aún no has guardado oportunidades"
+          description="Usa «Guardar» en una tarjeta o en la ficha y aparecerán aquí, con los mismos filtros que en Explorar."
+          action={<AppPillButton href="/app/oportunidades">Ir a Oportunidades</AppPillButton>}
+        />
       )}
 
       {!needsAuth && items.length > 0 && filtered.length === 0 && (

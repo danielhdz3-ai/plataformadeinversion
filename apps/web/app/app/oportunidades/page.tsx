@@ -21,6 +21,7 @@ import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
 import { filtersToUrlSearchParams, mergeUrlFiltersInto } from "@/lib/filters/url-sync";
 import { decodeListingTitle } from "@/lib/decode-html";
 import { useListingSummaries } from "@/lib/listing/use-listing-summaries";
+import { AppEmptyState, AppPage, AppPageBody, AppPageHeader, AppPillButton } from "@/components/ui/AppPage";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -453,27 +454,23 @@ function OportunidadesPageContent() {
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-1 overflow-hidden bg-[#f3f2ef]">
+    <AppPage>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-neutral-200/80 bg-white px-4 py-4 lg:px-8">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-950">Oportunidades</h1>
-            <p className="mt-0.5 text-sm text-neutral-600">
-              Busca un código postal o barrio en España; importamos anuncios en vivo para esa zona.
-            </p>
-          </div>
-          {!loading && (
-            <p className="text-xs text-neutral-500">
+      <AppPageHeader
+        title="Oportunidades"
+        description="Busca un código postal o barrio en España; importamos anuncios en vivo para esa zona."
+        meta={
+          !loading ? (
+            <>
               <span className="font-semibold tabular-nums text-neutral-900">
                 {totalQualified.toLocaleString("es-ES")}
               </span>{" "}
               en catálogo
               {feedSource === "zone" ? " · zona en vivo" : feedSource ? " · actualizado" : ""}
-            </p>
-          )}
-        </div>
-      </div>
+            </>
+          ) : null
+        }
+      />
 
       <OpportunityFeedToolbar
         filters={filters}
@@ -520,8 +517,7 @@ function OportunidadesPageContent() {
       />
       <OpportunityQuickChips filters={filters} onChange={setFilters} />
 
-      <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <section className="px-4 pb-24 pt-5 lg:px-8 xl:pb-10">
+      <AppPageBody wide>
           {loadError && (
             <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
               {loadError}
@@ -531,33 +527,28 @@ function OportunidadesPageContent() {
           {loading && <OpportunityFeedSkeleton count={20} />}
 
           {!loading && filtered.length === 0 && !loadError && !zone && !activeCp && (
-            <div className="mx-auto max-w-lg rounded-2xl border border-neutral-200 bg-white px-8 py-12 text-center shadow-sm">
-              <p className="text-base font-semibold text-neutral-950">Empieza por una zona</p>
-              <p className="mt-2 text-sm leading-relaxed text-neutral-600">
-                Escribe un CP de 5 dígitos (ej. 04638, 33201). El sistema importa portales para esa zona y te muestra
-                solo inventario reciente.
-              </p>
-            </div>
+            <AppEmptyState
+              title="Empieza por una zona"
+              description="Escribe un CP de 5 dígitos (ej. 04638, 33201). El sistema importa portales para esa zona y te muestra solo inventario reciente."
+            />
           )}
 
           {!loading && filtered.length === 0 && !loadError && (zone || activeCp) && (
-            <div className="mx-auto max-w-lg rounded-2xl border border-neutral-200 bg-white px-8 py-12 text-center shadow-sm">
-              <p className="text-base font-semibold text-neutral-950">Sin resultados con estos criterios</p>
-              <p className="mt-2 text-sm leading-relaxed text-neutral-600">
-                Relaja descuento, score o antigüedad en los filtros inferiores, o amplía la zona de búsqueda.
-              </p>
-              <button
-                type="button"
-                className="mt-6 rounded-full border border-neutral-300 px-5 py-2 text-sm font-medium hover:bg-neutral-50"
-                onClick={() => {
-                  setFilters(defaultOportunidadFilters());
-                  setSort("score_desc");
-                  setAdvancedOpen(false);
-                }}
-              >
-                Restablecer filtros
-              </button>
-            </div>
+            <AppEmptyState
+              title="Sin resultados con estos criterios"
+              description="Relaja descuento, score o antigüedad en los filtros, o amplía la zona de búsqueda."
+              action={
+                <AppPillButton
+                  onClick={() => {
+                    setFilters(defaultOportunidadFilters());
+                    setSort("score_desc");
+                    setAdvancedOpen(false);
+                  }}
+                >
+                  Restablecer filtros
+                </AppPillButton>
+              }
+            />
           )}
 
           {!loading && viewMode === "map" && filtered.length > 0 && (
@@ -594,18 +585,15 @@ function OportunidadesPageContent() {
 
           {!loading && zone && zoneHasMore && viewMode !== "map" && (
             <div className="mt-8 flex justify-center">
-              <button
-                type="button"
+              <AppPillButton
                 disabled={loadingMore}
                 onClick={() => void loadZoneFeed(zone, { live: false, append: true })}
-                className="rounded-full border border-neutral-300 bg-white px-6 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50 disabled:opacity-50"
               >
                 {loadingMore ? "Cargando…" : "Cargar más en esta zona"}
-              </button>
+              </AppPillButton>
             </div>
           )}
-        </section>
-      </main>
+      </AppPageBody>
       </div>
 
       {selected && selectedListing && (
@@ -626,7 +614,7 @@ function OportunidadesPageContent() {
         onClose={() => setSelected(null)}
         showEmptyState={false}
       />
-    </div>
+    </AppPage>
   );
 }
 
@@ -634,14 +622,14 @@ export default function OportunidadesPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-full flex-col bg-[#f3f2ef]">
+        <AppPage>
           <div className="border-b border-neutral-200 bg-white px-8 py-6">
             <div className="h-8 w-48 animate-pulse rounded bg-neutral-100" />
           </div>
           <div className="flex-1 p-8">
             <OpportunityFeedSkeleton />
           </div>
-        </div>
+        </AppPage>
       }
     >
       <OportunidadesPageContent />

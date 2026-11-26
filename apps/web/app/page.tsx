@@ -7,7 +7,7 @@ export default function LandingPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center gap-10 bg-[#f7f6f3] px-6 py-16">
+    <main className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center gap-10 bg-[#f3f2ef] px-6 py-16">
       <p className="text-sm uppercase tracking-widest text-neutral-500">Plataforma de inversión</p>
       <h1 className="max-w-3xl text-4xl font-semibold leading-tight text-neutral-950 md:text-5xl">
         ROI defendible en minutos, no en Excel

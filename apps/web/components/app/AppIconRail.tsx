@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
 export function AppIconRail() {
   const pathname = usePathname();
   return (
-    <nav className="flex w-[52px] shrink-0 flex-col items-center gap-1 border-r border-neutral-200 bg-[#f7f6f3] py-3">
+    <nav className="flex w-[52px] shrink-0 flex-col items-center gap-1 border-r border-neutral-200 bg-[#f3f2ef] py-3">
       {APP_NAV.map((item) => {
         const active = navItemActive(pathname, item.href);
         return (

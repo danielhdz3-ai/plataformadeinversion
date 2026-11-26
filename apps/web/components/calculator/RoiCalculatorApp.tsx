@@ -161,7 +161,7 @@ export function RoiCalculatorApp({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f7f6f3]">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#f3f2ef]">
       <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-4 py-3 md:px-6">
         <div>
           <h1 className="text-lg font-semibold text-neutral-950">Calculadora ROI</h1>
