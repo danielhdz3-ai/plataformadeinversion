@@ -37,8 +37,7 @@ function scrapedAgeDays(scrapedAt: string | null | undefined): number | null {
   return Math.max(0, Math.floor((Date.now() - t) / (86400 * 1000)));
 }
 
-/** Valoración orientativa a partir de notariado / €/m² del CP. */
-export function resolveValuation(input: {
+/** Valoración orientativa a partir de notariado / €/m² del CP. */export function resolveValuation(input: {
   price: number;
   sqm: number | null;
   summary: ListingSummary | null | undefined;
