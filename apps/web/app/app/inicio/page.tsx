@@ -183,46 +183,47 @@ export default function InicioPage() {
 
   return (
     <AppPage>
-      {/* ── Hero ── */}
-      <div className="brasa-glow relative shrink-0 border-b border-line bg-gradient-to-br from-deep via-deep to-void px-4 pb-7 pt-6 lg:px-8">
-        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
-          <span className="brasa-live-dot inline-block h-1.5 w-1.5 rounded-full bg-lime" />
-          Catálogo en vivo · {provinces || "—"} municipios
-        </div>
-        <h1 className="mt-3 max-w-4xl text-[34px] font-extrabold leading-[1.05] tracking-[-1.2px] text-ink sm:text-[46px]">
-          Hay{" "}
-          <span className="text-lime">
-            <AnimatedNumber value={total ?? items.length} />
-          </span>{" "}
-          oportunidades reales.{" "}
-          <span className="text-ink-muted">Las mejores, primero.</span>
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-muted">
-          Inmuebles de bancos y particulares con descuento frente a su valoración notarial, rentabilidad
-          determinista y coste real de compra. Sin humo.
-        </p>
-        <div className="mt-5 flex flex-wrap items-center gap-2.5">
-          <AppPillButton href="/app/oportunidades" variant="accent">
-            Ver todas las oportunidades →
-          </AppPillButton>
-          <AppPillButton href="/app/explorar">Explorar mapa</AppPillButton>
-          {bestDeal && (
-            <Link
-              href={`/app/listings/${bestDeal.id}`}
-              className="ml-1 text-xs font-semibold text-lime underline-offset-4 hover:underline"
-            >
-              El chollo del día: −
-              {Math.round(bestDeal.summary.opportunity.discountPct ?? 0)} % en {decodeListingTitle(bestDeal.city ?? "")}
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* ── Cinta infinita de chollos reales ── */}
-      <CinematicMarquee initial={marquee} />
-
       <AppPageBody wide>
         <div className="space-y-10">
+          {/* ── Hero ── */}
+          <div className="brasa-glow brasa-rise relative overflow-hidden rounded-2xl border border-line bg-gradient-to-br from-deep via-deep to-void px-5 pb-7 pt-6 lg:px-7">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+              <span className="brasa-live-dot inline-block h-1.5 w-1.5 rounded-full bg-lime" />
+              Catálogo en vivo · {provinces || "—"} municipios
+            </div>
+            <h1 className="mt-3 max-w-3xl text-[32px] font-extrabold leading-[1.06] tracking-[-1.2px] text-ink sm:text-[42px]">
+              Hay{" "}
+              <span className="text-lime">
+                <AnimatedNumber value={total ?? items.length} />
+              </span>{" "}
+              oportunidades reales.{" "}
+              <span className="text-ink-muted">Las mejores, primero.</span>
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-muted">
+              Inmuebles de bancos y particulares con descuento frente a su valoración notarial, rentabilidad
+              determinista y coste real de compra. Sin humo.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-2.5">
+              <AppPillButton href="/app/oportunidades" variant="accent">
+                Ver todas las oportunidades →
+              </AppPillButton>
+              <AppPillButton href="/app/explorar">Explorar mapa</AppPillButton>
+              {bestDeal && (
+                <Link
+                  href={`/app/listings/${bestDeal.id}`}
+                  className="ml-1 text-xs font-semibold text-lime underline-offset-4 hover:underline"
+                >
+                  El chollo del día: −
+                  {Math.round(bestDeal.summary.opportunity.discountPct ?? 0)} % en{" "}
+                  {decodeListingTitle(bestDeal.city ?? "")}
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* ── Cinta infinita de chollos reales ── */}
+          <CinematicMarquee initial={marquee} />
+
           {/* KPIs */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {[
@@ -242,16 +243,25 @@ export default function InicioPage() {
                     k.accent ? "text-lime" : "text-ink"
                   }`}
                 >
-                  {k.prefix ?? ""}
-                  <AnimatedNumber
-                    value={k.value}
-                    format={(n) =>
-                      k.decimals
-                        ? n.toLocaleString("es-ES", { maximumFractionDigits: k.decimals, minimumFractionDigits: k.decimals })
-                        : Math.round(n).toLocaleString("es-ES")
-                    }
-                  />
-                  {k.suffix}
+                  {total == null ? (
+                    <span className="text-ink-muted/50">—</span>
+                  ) : (
+                    <>
+                      {k.prefix ?? ""}
+                      <AnimatedNumber
+                        value={k.value}
+                        format={(n) =>
+                          k.decimals
+                            ? n.toLocaleString("es-ES", {
+                                maximumFractionDigits: k.decimals,
+                                minimumFractionDigits: k.decimals,
+                              })
+                            : Math.round(n).toLocaleString("es-ES")
+                        }
+                      />
+                      {k.suffix}
+                    </>
+                  )}
                 </p>
               </div>
             ))}
