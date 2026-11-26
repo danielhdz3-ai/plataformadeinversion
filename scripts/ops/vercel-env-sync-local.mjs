@@ -8,6 +8,10 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const web = join(root, "apps/web");
 const scope = process.env.VERCEL_SCOPE ?? "danielhdz5-ai";
 
+/** Repo con los workflows de scrape/ingest (cuenta del PAT GH). */
+const CANONICAL_GITHUB_REPO =
+  process.env.GITHUB_REPOSITORY ?? "danielhdz4-ai/plataformadeinversion";
+
 const KEYS = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
@@ -49,7 +53,7 @@ if (!derived.GITHUB_WORKFLOW_TOKEN && derived.GH_TOKEN) {
   derived.GITHUB_WORKFLOW_TOKEN = derived.GH_TOKEN;
 }
 if (!derived.GITHUB_REPOSITORY) {
-  derived.GITHUB_REPOSITORY = "danielhdz4-ai/plataformadeinversion";
+  derived.GITHUB_REPOSITORY = CANONICAL_GITHUB_REPO;
 }
 
 for (const key of KEYS) {

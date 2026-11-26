@@ -21,7 +21,7 @@ if (!token) {
   process.exit(1);
 }
 
-const remote = `https://x-access-token:${token}@github.com/danielhdz4-ai/plataformadeinversion.git`;
+const remote = `https://x-access-token:${token}@github.com/danielhdz-ai/plataformadeinversion.git`;
 const r = spawnSync("git", ["push", remote, "HEAD:main"], {
   cwd: root,
   stdio: "inherit",
