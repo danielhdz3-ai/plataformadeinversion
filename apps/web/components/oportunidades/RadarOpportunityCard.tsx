@@ -43,6 +43,8 @@ export type RadarOpportunityCardProps = {
   selected?: boolean;
   onSelect?: () => void;
   returnTo?: string | null;
+  /** Posición en el feed: escalona la animación de entrada. */
+  index?: number | null;
 };
 
 export function RadarOpportunityCard({
@@ -62,6 +64,7 @@ export function RadarOpportunityCard({
   selected,
   onSelect,
   returnTo,
+  index = null,
 }: RadarOpportunityCardProps) {
   const fichaHref = listingDetailHref(listingId, returnTo);
   const portal = portalBadge(sourcePortal);
@@ -141,13 +144,12 @@ export function RadarOpportunityCard({
             }
           : undefined
       }
-      className={`group flex flex-col overflow-hidden rounded-2xl border bg-white transition duration-200 ${
-        selected
-          ? "border-neutral-900 shadow-[0_12px_40px_rgba(0,0,0,0.12)] ring-1 ring-neutral-900/15"
-          : "border-neutral-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-[0_16px_48px_rgba(0,0,0,0.08)]"
+      className={`brasa-card brasa-rise group flex flex-col overflow-hidden ${
+        selected ? "!border-lime ring-1 ring-lime/40" : ""
       } ${onSelect ? "cursor-pointer" : ""}`}
+      style={index != null ? { animationDelay: `${Math.min(index, 16) * 45}ms` } : undefined}
     >
-      <div className="relative aspect-[5/4] w-full shrink-0 overflow-hidden bg-neutral-100">
+      <div className="relative aspect-[5/4] w-full shrink-0 overflow-hidden bg-deep">
         {showThumb ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -157,12 +159,12 @@ export function RadarOpportunityCard({
             loading="lazy"
             decoding="async"
             onError={() => setThumbFailed(true)}
-            className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.03]"
+            className="h-full w-full object-cover transition duration-700 ease-out group-hover:scale-[1.06]"
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-neutral-100 to-neutral-50 text-neutral-400">
+          <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-deep to-void text-ink-muted">
             <span className="text-[10px] font-semibold uppercase tracking-[0.2em]">{portal.name}</span>
-            <span className="text-xs text-neutral-400">Imagen no disponible</span>
+            <span className="text-xs text-ink-muted/70">Imagen no disponible</span>
           </div>
         )}
 
@@ -204,12 +206,12 @@ export function RadarOpportunityCard({
         <Link
           href={fichaHref}
           onClick={(e) => e.stopPropagation()}
-          className="line-clamp-2 text-[13px] font-semibold leading-snug text-neutral-950 hover:text-neutral-700"
+          className="line-clamp-2 text-[13px] font-semibold leading-snug text-ink transition hover:text-lime"
         >
           {cleanTitle}
         </Link>
         {(city || ageLabel) && (
-          <p className="mt-1 flex flex-wrap items-center gap-1.5 truncate text-xs text-neutral-500">
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 truncate text-xs text-ink-muted">
             <span className="truncate">
               {[city ? decodeListingTitle(city) : null, ageLabel ? ageLabel.replace(/^·\s*/, "") : null]
                 .filter(Boolean)
@@ -223,51 +225,46 @@ export function RadarOpportunityCard({
           </p>
         )}
         {specParts.length > 0 && (
-          <p className="mt-1.5 text-[11px] font-medium text-neutral-600">{specParts.join(" · ")}</p>
+          <p className="mt-1.5 text-[11px] font-medium text-ink-muted">{specParts.join(" · ")}</p>
         )}
 
-        <div className="mt-3 space-y-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">Precio</p>
-          <p className="text-xl font-bold tabular-nums text-neutral-950">
+        <div className="mt-3">
+          <p className="text-[22px] font-extrabold leading-none tabular-nums tracking-tight text-ink">
             {price.toLocaleString("es-ES")} €
           </p>
           {deal && (
-            <p className="text-[11px] tabular-nums text-neutral-600">
-              Coste real {fmtEur(deal.totalCost)}
+            <p className="mt-1.5 text-[11px] tabular-nums text-ink-muted">
+              Coste real <span className="font-semibold text-ink">{fmtEur(deal.totalCost)}</span>
               {deal.netYieldPct != null ? ` · neta ${deal.netYieldPct.toFixed(1)} %` : ""}
             </p>
           )}
         </div>
 
         {opportunity.valuationMid != null && (
-          <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2">
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="text-[10px] font-medium text-emerald-900/70">Valoración</p>
-              {opportunity.discountPct != null && opportunity.discountPct > 3 && (
-                <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white">
-                  −{Math.round(opportunity.discountPct)} %
-                </span>
-              )}
-            </div>
-            <p className="text-sm font-semibold tabular-nums text-emerald-950">
-              ≈ {opportunity.valuationMid.toLocaleString("es-ES")} €
-            </p>
-            {opportunity.valuationLow != null && opportunity.valuationHigh != null && (
-              <p className="text-[10px] tabular-nums text-emerald-900/70">
-                {opportunity.valuationLow.toLocaleString("es-ES")}–{opportunity.valuationHigh.toLocaleString("es-ES")} €
+          <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-line bg-deep px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-[9px] font-semibold uppercase tracking-wider text-ink-muted">Valoración</p>
+              <p className="truncate text-sm font-bold tabular-nums text-ink">
+                {opportunity.valuationMid.toLocaleString("es-ES")} €
               </p>
+            </div>
+            {opportunity.discountPct != null && opportunity.discountPct > 3 && (
+              <span className="shrink-0 rounded-md bg-lime px-2 py-1 text-[11px] font-extrabold tabular-nums text-lime-ink">
+                −{Math.round(opportunity.discountPct)} %
+              </span>
             )}
           </div>
         )}
 
         {valuationLine && (
-          <p className="mt-2 text-[11px] leading-snug text-neutral-600">{valuationLine}</p>
+          <p className="mt-2 text-[11px] leading-snug text-ink-muted">{valuationLine}</p>
         )}
 
         {displayRoi != null && (
-          <p className="mt-2 text-xs font-semibold text-neutral-800">
+          <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
+            <span className="h-1.5 w-1.5 rounded-full bg-mint" />
             Rentabilidad{" "}
-            <span className="tabular-nums text-emerald-700">
+            <span className="tabular-nums text-mint">
               {displayRoi.toLocaleString("es-ES", { maximumFractionDigits: 1 })} %
             </span>
           </p>
@@ -280,17 +277,17 @@ export function RadarOpportunityCard({
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 py-2.5 text-center text-xs font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-orange-700"
+              className="rounded-xl bg-lime py-2.5 text-center text-xs font-bold text-lime-ink transition hover:brightness-105"
             >
               {isAuction ? "Pujar" : "Contactar"}
             </a>
           ) : (
-            <span className="rounded-xl bg-neutral-100 py-2.5 text-center text-xs text-neutral-400">Sin enlace</span>
+            <span className="rounded-xl border border-line py-2.5 text-center text-xs text-ink-muted/70">Sin enlace</span>
           )}
           <Link
             href={fichaHref}
             onClick={(e) => e.stopPropagation()}
-            className="rounded-xl border border-neutral-300 bg-white py-2.5 text-center text-xs font-semibold text-neutral-800 transition hover:border-neutral-400 hover:bg-neutral-50"
+            className="rounded-xl border border-line py-2.5 text-center text-xs font-semibold text-ink transition hover:border-lime/60 hover:text-lime"
           >
             Analizar
           </Link>
