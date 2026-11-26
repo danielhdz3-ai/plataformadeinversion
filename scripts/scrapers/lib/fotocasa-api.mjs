@@ -23,6 +23,17 @@ export const FOTOCASA_SALE_ZONES = [
   { slug: "las-palmas-de-gran-canaria", name: "Las Palmas", ccaa: "Canarias" },
   { slug: "a-coruna", name: "A Coruña", ccaa: "Galicia" },
   { slug: "castellon-provincia", name: "Castellón", ccaa: "Comunitat Valenciana" },
+  { slug: "vitoria-gasteiz", name: "Vitoria-Gasteiz", ccaa: "País Vasco" },
+  { slug: "araba-alava", name: "Álava provincia", ccaa: "País Vasco" },
+  { slug: "gipuzkoa", name: "Gipuzkoa", ccaa: "País Vasco" },
+  { slug: "navarra-provincia", name: "Navarra", ccaa: "Navarra" },
+  { slug: "logrono", name: "Logroño", ccaa: "La Rioja" },
+  { slug: "la-rioja-provincia", name: "La Rioja", ccaa: "La Rioja" },
+  { slug: "huelva-provincia", name: "Huelva", ccaa: "Andalucía" },
+  { slug: "avila-provincia", name: "Ávila", ccaa: "Castilla y León" },
+  { slug: "cantabria-provincia", name: "Cantabria", ccaa: "Cantabria" },
+  { slug: "granada-provincia", name: "Granada", ccaa: "Andalucía" },
+  { slug: "lleida-provincia", name: "Lleida", ccaa: "Cataluña" },
 ];
 
 /** zoneSlug: `madrid-capital` o `madrid-capital/chamberi` (barrio). */

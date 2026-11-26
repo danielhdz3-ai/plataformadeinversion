@@ -11,8 +11,18 @@ import { normalizeIngestPortals } from "./all-portals.mjs";
 import { ingestExtraPortals } from "./ingest-extra-portals.mjs";
 import { tagListingsForPostalCode } from "./tag-listings-for-cp.mjs";
 
+import { haversineKm } from "./geo.mjs";
+
 const PORTAL = "fotocasa";
-const TARGET = Number(process.env.SCRAPE_TARGET_PER_CP ?? "200");
+const TARGET = Number(process.env.SCRAPE_TARGET_PER_CP ?? "120");
+/** Rural: acepta anuncios geolocalizados a ≤ N km del centro del CP. */
+const NEARBY_KM = Number(process.env.SCRAPE_CP_NEARBY_KM ?? "12");
+const NEARBY_CAP = Number(process.env.SCRAPE_CP_NEARBY_MAX ?? "30");
+const RURAL_CP = new Set([
+  "05267", "39680", "18411", "21200", "25126", "42146", "09560", "15886", "15300",
+  "40542", "50630", "24540", "47460", "09340", "44240",
+]);
+const GAP_CP = new Set(["01001", "20001", "26001", "31001", "21001"]);
 const MIN_PER_PORTAL = Number(process.env.SCRAPE_CP_MIN_PER_PORTAL ?? "15");
 const MAX_BOOST = Number(process.env.SCRAPE_CP_BOOST_ROUNDS ?? "3");
 
@@ -63,9 +73,25 @@ function needsMoreScrape(total, byPortal, portals, target, minPerPortal) {
   return false;
 }
 
-async function upsertFotocasaListing(supabase, mapped, zone, anchor, postalCode) {
+function isRuralCp(cp) {
+  return RURAL_CP.has(cp) || GAP_CP.has(cp);
+}
+
+async function upsertFotocasaListing(supabase, mapped, zone, anchor, postalCode, stats) {
   if (!mapped.externalId || mapped.price == null) return false;
-  if (!cpMatches(mapped.postalCode, postalCode)) return false;
+  let nearRural = false;
+  if (!cpMatches(mapped.postalCode, postalCode)) {
+    if (!isRuralCp(postalCode) || mapped.lat == null || mapped.lon == null || !anchor) {
+      if (stats) stats.skipCp++;
+      return false;
+    }
+    const km = haversineKm(anchor.lat, anchor.lng, mapped.lat, mapped.lon);
+    if (km > NEARBY_KM || (stats?.nearby ?? 0) >= NEARBY_CAP) {
+      if (stats) stats.skipCp++;
+      return false;
+    }
+    nearRural = true;
+  }
 
   let lon = mapped.lon;
   let lat = mapped.lat;
@@ -104,19 +130,26 @@ async function upsertFotocasaListing(supabase, mapped, zone, anchor, postalCode)
     last_seen_at: new Date().toISOString(),
   };
 
-  if (dryRun()) return true;
+  if (dryRun()) {
+    if (nearRural && stats) stats.nearby++;
+    return true;
+  }
 
   const { data: upserted, error } = await supabase
     .from("listings")
     .upsert(payload, { onConflict: "source_portal,source_external_id" })
     .select("id")
     .maybeSingle();
-  if (error || !upserted?.id) return false;
+  if (error || !upserted?.id) {
+    if (stats) stats.upsertErr++;
+    return false;
+  }
   await supabase.rpc("patch_listing_geom", { listing_id: upserted.id, lon, lat });
+  if (nearRural && stats) stats.nearby++;
   return true;
 }
 
-async function scrapeFotocasaForCp(supabase, resolved, postalCode) {
+async function scrapeFotocasaForCp(supabase, resolved, postalCode, stats) {
   const maxPages = Number(process.env.SCRAPE_CP_FOTOCASA_PAGES ?? "24");
   const anchor = resolved.center;
   let inserted = 0;
@@ -128,7 +161,13 @@ async function scrapeFotocasaForCp(supabase, resolved, postalCode) {
       const inDb = await countActiveByCp(supabase, postalCode);
       if (inDb >= TARGET) break;
 
-      const { listings } = await fetchFotocasaListPage(zone.slug, page);
+      let listings = [];
+      try {
+        ({ listings } = await fetchFotocasaListPage(zone.slug, page));
+      } catch (e) {
+        console.warn("fotocasa cp page", zone.slug, page, e instanceof Error ? e.message : e);
+        break;
+      }
       if (listings.length === 0) {
         empty++;
         if (empty >= 2) break;
@@ -138,7 +177,7 @@ async function scrapeFotocasaForCp(supabase, resolved, postalCode) {
       cards += listings.length;
 
       for (const mapped of listings) {
-        if (await upsertFotocasaListing(supabase, mapped, zone, anchor, postalCode)) {
+        if (await upsertFotocasaListing(supabase, mapped, zone, anchor, postalCode, stats)) {
           inserted++;
         }
       }
@@ -187,10 +226,43 @@ async function scrapePisosForCp(resolved, postalCode) {
   return { inserted };
 }
 
+function boostEnvForCp(cp) {
+  if (!RURAL_CP.has(cp) && !GAP_CP.has(cp)) return;
+  process.env.SCAN_CP_DISTRICT_KM ??= "22";
+  process.env.SCAN_CP_MAX_DISTRICTS ??= "14";
+  process.env.SCRAPE_CP_TAG_RADIUS_M ??= "7500";
+  process.env.SCRAPE_CP_FOTOCASA_PAGES ??= "50";
+  process.env.SCRAPE_CP_PISOS_PAGES ??= "24";
+  process.env.SCRAPE_CP_PISOS_MAX ??= "500";
+  process.env.SCRAPE_CP_BOOST_ROUNDS = String(
+    Math.max(Number(process.env.SCRAPE_CP_BOOST_ROUNDS ?? "3"), 5)
+  );
+}
+
+async function tagCpWide(cp, center) {
+  const base = RURAL_CP.has(cp) || GAP_CP.has(cp) ? 5500 : 2800;
+  const steps = [
+    base,
+    Math.min(15_000, Math.round(base * 1.35)),
+    Math.min(15_000, Math.round(base * 1.75)),
+    15_000,
+  ].filter((v, i, a) => a.indexOf(v) === i);
+  let tagged = 0;
+  const details = [];
+  for (const radiusM of steps) {
+    const r = await tagListingsForPostalCode(cp, { center, radiusM });
+    details.push({ radiusM, ...r });
+    if (r.ok) tagged += Number(r.tagged ?? 0);
+    if (Number(r.tagged ?? 0) === 0 && radiusM >= 12_000) break;
+  }
+  return { tagged, steps: details };
+}
+
 export async function scrapeByPostalCode(postalCode, options = {}) {
   const cp = normalizeCp(postalCode);
   if (!cp) throw new Error(`CP inválido: ${postalCode}`);
 
+  boostEnvForCp(cp);
   const supabase = getSupabase();
   const target = Number(options.target ?? TARGET);
   const before = await countActiveByCp(supabase, cp);
@@ -203,7 +275,17 @@ export async function scrapeByPostalCode(postalCode, options = {}) {
   if (!process.env.SCAN_SOLVIA_MAX_PAGES) process.env.SCAN_SOLVIA_MAX_PAGES = "6";
   const portals = normalizeIngestPortals(options.portals);
   const resolved = await resolveZonesForPostalCode(cp);
-  const fotocasa = await scrapeFotocasaForCp(supabase, resolved, cp);
+  const stats = { skipCp: 0, nearby: 0, upsertErr: 0 };
+  let fotocasa = { inserted: 0, cards: 0 };
+  try {
+    fotocasa = await scrapeFotocasaForCp(supabase, resolved, cp, stats);
+  } catch (e) {
+    fotocasa = {
+      inserted: 0,
+      cards: 0,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
   const pisos = await scrapePisosForCp(resolved, cp);
   let extra = await ingestExtraPortals({
     portals,
@@ -214,16 +296,20 @@ export async function scrapeByPostalCode(postalCode, options = {}) {
   });
 
   let boost = 0;
-  while (boost < MAX_BOOST) {
+  const rural = isRuralCp(cp);
+  const boostMax = rural ? Math.max(MAX_BOOST, 6) : MAX_BOOST;
+  while (boost < boostMax) {
     const inDb = await countActiveByCp(supabase, cp);
     const byPortal = await countByCpPortal(supabase, cp);
     if (!needsMoreScrape(inDb, byPortal, portals, target, MIN_PER_PORTAL)) break;
     boost++;
     process.env.SCRAPE_CP_PISOS_MAX = String(450 + boost * 150);
-    process.env.SCRAPE_CP_FOTOCASA_PAGES = String(28 + boost * 8);
+    process.env.SCRAPE_CP_FOTOCASA_PAGES = rural
+      ? String(40 + boost * 12)
+      : String(28 + boost * 8);
     process.env.SCAN_HIPOGES_MAX_PAGES = String(20 + boost * 6);
     process.env.SCAN_SOLVIA_MAX_PAGES = String(10 + boost * 4);
-    await scrapeFotocasaForCp(supabase, resolved, cp);
+    await scrapeFotocasaForCp(supabase, resolved, cp, stats);
     await scrapePisosForCp(resolved, cp);
     extra = await ingestExtraPortals({
       portals,
@@ -234,7 +320,18 @@ export async function scrapeByPostalCode(postalCode, options = {}) {
     });
   }
 
-  const tagged = await tagListingsForPostalCode(cp, { center: resolved.center });
+  const tagged =
+    RURAL_CP.has(cp) || GAP_CP.has(cp)
+      ? await tagCpWide(cp, resolved.center)
+      : await tagListingsForPostalCode(cp, { center: resolved.center });
+
+  let roi = { candidates: 0, updated: 0 };
+  try {
+    const { ensureFreshRoi } = await import("./ensure-fresh-roi.mjs");
+    roi = await ensureFreshRoi(cp);
+  } catch (e) {
+    roi = { candidates: 0, updated: 0, error: e instanceof Error ? e.message : String(e) };
+  }
 
   const countAfter = await countActiveByCp(supabase, cp);
   const byPortalAfter = await countByCpPortal(supabase, cp);
@@ -258,6 +355,8 @@ export async function scrapeByPostalCode(postalCode, options = {}) {
     pisos,
     extra,
     tagged,
+    roi,
+    nearby: { applied: rural, radiusKm: NEARBY_KM, cap: NEARBY_CAP, ...stats },
     boostRounds: boost,
   };
 }

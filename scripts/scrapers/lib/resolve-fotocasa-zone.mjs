@@ -30,6 +30,12 @@ const CITY_TO_FOTOCASA = {
   burgos: "burgos",
   almeria: "almeria-capital",
   castellon: "castellon-provincia",
+  "vitoria-gasteiz": "vitoria-gasteiz",
+  "san-sebastian": "gipuzkoa",
+  pamplona: "navarra-provincia",
+  logrono: "logrono",
+  huelva: "huelva-provincia",
+  vitoria: "vitoria-gasteiz",
 };
 
 const KNOWN_ZONE_SLUGS = new Set(FOTOCASA_SALE_ZONES.map((z) => z.slug));
@@ -47,11 +53,12 @@ export function resolveFotocasaZoneSlug(citySlug) {
     const city = getCityConfig(citySlug);
     const pisos = city.pisosSlug ?? citySlug;
     const fromPisos = `${pisos}-provincia`;
-    if (fromPisos !== provincia) return fromPisos;
+    if (fromPisos !== provincia && KNOWN_ZONE_SLUGS.has(fromPisos)) return fromPisos;
   } catch {
     /* unknown slug */
   }
 
+  if (KNOWN_ZONE_SLUGS.has(provincia)) return provincia;
   return provincia;
 }
 

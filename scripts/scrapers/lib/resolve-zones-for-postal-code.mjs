@@ -37,15 +37,43 @@ export async function resolveZonesForPostalCode(postalCode) {
     distKm: z.distKm,
   }));
 
-  if (fotocasaZones.length === 0 && anchorCity) {
-    fotocasaZones.push({
-      slug: resolveFotocasaZoneSlug(anchorCity.citySlug) ?? anchorCity.slug,
-      name: anchorCity.name,
-      ccaa: anchorCity.ccaa,
-      lat: geo.lat,
-      lng: geo.lon,
-      distKm: 0,
-    });
+  /** Provincia Fotocasa por prefijo de CP (cobertura rural sin barrios). */
+  const PROVINCE_BY_PREFIX = {
+    "01": "araba-alava",
+    "20": "gipuzkoa",
+    "31": "navarra-provincia",
+    "26": "la-rioja-provincia",
+    "05": "avila-provincia",
+    "39": "cantabria-provincia",
+    "21": "huelva-provincia",
+    "18": "granada-provincia",
+    "25": "lleida-provincia",
+  };
+
+  if (anchorCity) {
+    const primary = resolveFotocasaZoneSlug(anchorCity.citySlug) ?? anchorCity.slug;
+    const hasPrimary = fotocasaZones.some((z) => z.slug === primary);
+    if (!hasPrimary && fotocasaZones.length < 3) {
+      fotocasaZones.push({
+        slug: primary,
+        name: anchorCity.name,
+        ccaa: anchorCity.ccaa,
+        lat: geo.lat,
+        lng: geo.lon,
+        distKm: 0,
+      });
+    }
+    const provincial = PROVINCE_BY_PREFIX[cp.slice(0, 2)];
+    if (provincial && !fotocasaZones.some((z) => z.slug === provincial)) {
+      fotocasaZones.push({
+        slug: provincial,
+        name: `${anchorCity.name} (provincia)`,
+        ccaa: anchorCity.ccaa,
+        lat: geo.lat,
+        lng: geo.lon,
+        distKm: 0,
+      });
+    }
   }
 
   return {
