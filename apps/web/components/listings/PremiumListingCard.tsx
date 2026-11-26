@@ -139,11 +139,11 @@ export function PremiumListingCard({
             }
           : undefined
       }
-      className={`flex w-full max-w-full shrink-0 flex-col overflow-hidden rounded-xl border bg-white shadow-sm transition hover:shadow-md ${
-        selected ? "border-neutral-950 ring-2 ring-neutral-950" : "border-neutral-200"
+      className={`brasa-rise flex w-full max-w-full shrink-0 flex-col overflow-hidden rounded-2xl border bg-surface transition ${
+        selected ? "border-lime ring-1 ring-lime" : "border-line hover:border-ink/20"
       } ${onSelect ? "cursor-pointer" : ""}`}
     >
-      <div className={`relative w-full shrink-0 overflow-hidden bg-neutral-100 ${imageHeight}`}>
+      <div className={`relative w-full shrink-0 overflow-hidden bg-raised ${imageHeight}`}>
         <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-wrap gap-1">
           {markedOpportunity && <OpportunityVerifiedBadge />}
           <DiscountPctBadge pct={opportunity.discountPct} />
@@ -167,44 +167,44 @@ export function PremiumListingCard({
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-1 text-neutral-400">
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-ink-muted">
               <span className="text-xs uppercase tracking-widest">{portal.name}</span>
               <span className="text-[10px]">Sin foto</span>
             </div>
           )}
         </Link>
         {displayRoi != null && (
-          <span className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-neutral-950 px-2.5 py-1 text-xs font-bold tabular-nums text-white">
-            {displayRoi.toFixed(2)}% ROI
+          <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-lime px-2.5 py-1 text-xs font-bold tabular-nums text-lime-ink">
+            {displayRoi.toFixed(2)} % ROI
           </span>
         )}
       </div>
 
-      <div className="space-y-2 border-b border-neutral-100 p-3">
+      <div className="space-y-2 border-b border-line p-3">
         <div className="flex items-start justify-between gap-2">
           <Link
             href={fichaHref}
             className="min-w-0 flex-1"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="line-clamp-2 text-sm font-semibold capitalize text-neutral-950">{cleanTitle}</h3>
+            <h3 className="line-clamp-2 text-sm font-bold capitalize text-ink">{cleanTitle}</h3>
           </Link>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <SaveListingButton listingId={listingId} compact className="!px-1.5 !py-0.5 !text-[10px]" />
-            <span className="rounded border border-neutral-300 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-neutral-700">
+            <span className="rounded-full bg-raised px-2 py-0.5 text-[10px] font-bold uppercase text-ink-muted">
               {portal.name}
             </span>
           </div>
         </div>
         {(city || postalCode) && (
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-ink-muted">
             {[city ? decodeListingTitle(city) : null, postalCode ? `CP ${postalCode}` : null]
               .filter(Boolean)
               .join(" · ")}
           </p>
         )}
         {specs && (
-          <p className="text-xs text-neutral-600">
+          <p className="text-xs text-ink-muted">
             {specs}
             <ScrapedAgeLabel metrics={opportunity} />
           </p>
@@ -218,16 +218,18 @@ export function PremiumListingCard({
             discountPct={opportunity.discountPct}
           />
           {opportunity.valuationMid == null && (
-            <p className="text-lg font-bold tabular-nums text-neutral-950">{price.toLocaleString("es-ES")} €</p>
+            <p className="text-[19px] font-extrabold tabular-nums tracking-tight text-ink">
+              {price.toLocaleString("es-ES")} <span className="text-xs font-semibold text-ink-muted">€</span>
+            </p>
           )}
           <div className="flex flex-wrap items-end justify-between gap-2">
             {displayRoi != null && (
-              <p className="text-xs font-semibold tabular-nums text-emerald-800">
+              <p className="text-xs font-bold tabular-nums text-lime">
                 Rentabilidad {displayRoi.toFixed(1)} %
               </p>
             )}
             {displayRent != null && (
-              <p className="text-xs tabular-nums text-neutral-600">
+              <p className="text-xs tabular-nums text-ink-muted">
                 {Math.round(displayRent).toLocaleString("es-ES")} €/mes est.
               </p>
             )}
@@ -257,11 +259,11 @@ export function PremiumListingCard({
             tone={
               summary?.neighborhood.vsCpPct != null
                 ? summary.neighborhood.vsCpPct > 5
-                  ? "warn"
+                  ? "bad"
                   : summary.neighborhood.vsCpPct < -5
-                    ? "ok"
-                    : "neutral"
-                : "neutral"
+                    ? "good"
+                    : "default"
+                : "default"
             }
           />
           <Metric
@@ -280,43 +282,45 @@ export function PremiumListingCard({
       </div>
 
       {!compact && summaryLoading && !summary && (
-        <div className="animate-pulse space-y-2 bg-[#faf9f7] px-3 py-4">
-          <div className="h-3 w-2/3 rounded bg-neutral-200" />
-          <div className="h-20 rounded bg-neutral-200" />
-          <div className="h-14 rounded bg-neutral-200" />
+        <div className="space-y-2 px-3 py-4">
+          <div className="shimmer h-3 w-2/3 rounded" />
+          <div className="shimmer h-20 rounded-xl" />
+          <div className="shimmer h-14 rounded-xl" />
         </div>
       )}
 
       {!compact && summary && (
         <>
-          <ListingResumenPanel summary={summary} listingId={listingId} embedded />
-          <div className="border-t border-neutral-100 px-3 py-3">
+          <div className="border-b border-line px-3 py-3">
+            <ListingResumenPanel summary={summary} listingId={listingId} embedded />
+          </div>
+          <div className="px-3 py-3">
             <ListingAiAnalysisBlock listingId={listingId} compact />
           </div>
         </>
       )}
 
       {investorActions && (
-        <div className="flex gap-2 border-t border-neutral-100 p-3">
+        <div className="flex gap-2 border-t border-line p-3">
           {sourceUrl ? (
             <a
               href={sourceUrl}
               target="_blank"
               rel="noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="flex-1 rounded-lg bg-orange-600 py-2 text-center text-xs font-semibold text-white hover:bg-orange-700"
+              className="flex-1 rounded-full bg-lime py-2 text-center text-xs font-bold text-lime-ink transition hover:brightness-105"
             >
               Contactar
             </a>
           ) : (
-            <span className="flex-1 rounded-lg bg-neutral-200 py-2 text-center text-xs text-neutral-500">
+            <span className="flex-1 rounded-full bg-raised py-2 text-center text-xs font-semibold text-ink-muted">
               Sin enlace
             </span>
           )}
           <Link
             href={fichaHref}
             onClick={(e) => e.stopPropagation()}
-            className="flex-1 rounded-lg border border-orange-600 py-2 text-center text-xs font-semibold text-orange-700 hover:bg-orange-50"
+            className="flex-1 rounded-full border border-line py-2 text-center text-xs font-bold text-ink transition hover:border-lime/60 hover:text-lime"
           >
             Analizar
           </Link>
@@ -324,13 +328,13 @@ export function PremiumListingCard({
       )}
 
       {sourceUrl && !investorActions && (
-        <div className="border-t border-neutral-100 px-3 py-2">
+        <div className="border-t border-line px-3 py-2">
           <a
             href={sourceUrl}
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="text-xs font-medium text-neutral-600 underline"
+            className="text-xs font-semibold text-ink-muted underline hover:text-lime"
           >
             Ver anuncio en {portal.name}
           </a>
@@ -343,17 +347,17 @@ export function PremiumListingCard({
 function Metric({
   label,
   value,
-  tone = "neutral",
+  tone = "default",
 }: {
   label: string;
   value: string;
-  tone?: "neutral" | "ok" | "warn";
+  tone?: "default" | "good" | "bad";
 }) {
   const valueClass =
-    tone === "warn" ? "text-red-700" : tone === "ok" ? "text-emerald-800" : "text-neutral-950";
+    tone === "bad" ? "text-clay" : tone === "good" ? "text-lime" : "text-ink";
   return (
-    <div className="rounded-md border border-neutral-100 bg-[#faf9f7] px-2 py-1.5">
-      <p className="text-[9px] font-semibold uppercase tracking-wide text-neutral-500">{label}</p>
+    <div className="rounded-lg bg-raised/70 px-2 py-1.5">
+      <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-ink-muted">{label}</p>
       <p className={`text-xs font-bold tabular-nums ${valueClass}`}>{value}</p>
     </div>
   );

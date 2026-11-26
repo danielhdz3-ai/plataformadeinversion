@@ -2,6 +2,7 @@
 
 import type { ListingSummary } from "@/lib/listing/summary-types";
 import { dealNumbersFromSummary, fmtEur } from "@/lib/listing/deal-numbers";
+import { MetricCard } from "@/components/ui/MetricCard";
 
 /**
  * "Los números": coste real de la operación (no solo el precio del anuncio).
@@ -32,27 +33,25 @@ export function DealNumbersBlock({ summary, price }: { summary: ListingSummary; 
   ];
 
   return (
-    <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <div className="border-b border-neutral-200 px-5 py-4">
-        <h2 className="text-base font-bold text-neutral-950">Los números</h2>
-        <p className="mt-0.5 text-xs text-neutral-600">
+    <section className="brasa-card overflow-hidden">
+      <div className="border-b border-line px-5 py-4">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink">Los números</h2>
+        <p className="mt-0.5 text-xs text-ink-muted">
           Lo que cuesta de verdad la operación y lo que puede dar.
         </p>
       </div>
-      <dl className="divide-y divide-neutral-100">
+      <dl className="px-5 py-1">
         {rows.map((r) => (
-          <div key={r.label} className="flex items-start justify-between gap-4 px-5 py-3">
+          <div key={r.label} className="flex items-start justify-between gap-4 border-b border-line/60 py-2.5 last:border-0">
             <div className="min-w-0">
-              <dt
-                className={`text-sm ${r.strong ? "font-semibold text-neutral-950" : "text-neutral-700"}`}
-              >
+              <dt className={`text-[13px] ${r.strong ? "font-semibold text-ink" : "text-ink-muted"}`}>
                 {r.label}
               </dt>
-              {r.sub && <p className="mt-0.5 text-[11px] leading-snug text-neutral-500">{r.sub}</p>}
+              {r.sub && <p className="mt-0.5 text-[10px] leading-snug text-ink-muted/70">{r.sub}</p>}
             </div>
             <dd
               className={`shrink-0 tabular-nums ${
-                r.strong ? "text-base font-bold text-neutral-950" : "text-sm font-semibold text-neutral-900"
+                r.strong ? "text-[15px] font-bold text-ink" : "text-[13px] font-semibold text-ink"
               }`}
             >
               {r.value}
@@ -60,29 +59,22 @@ export function DealNumbersBlock({ summary, price }: { summary: ListingSummary; 
           </div>
         ))}
       </dl>
-      <div className="grid grid-cols-2 gap-px border-t border-neutral-200 bg-neutral-100">
-        <div className="bg-white px-5 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-            Inversión total con impuestos
-          </p>
-          <p className="text-lg font-bold tabular-nums text-neutral-950">{fmtEur(totalCost)}</p>
-          {cash > 0 && Math.abs(cash - totalCost) > 1 && (
-            <p className="text-[10px] text-neutral-500">Con reforma prevista: {fmtEur(cash)}</p>
-          )}
-        </div>
-        <div className="bg-white px-5 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-            Rentabilidad neta estimada
-          </p>
-          <p className="text-lg font-bold tabular-nums text-emerald-700">
-            {roiNet != null ? `${roiNet.toFixed(2)} %` : "—"}
-          </p>
-          <p className="text-[10px] text-neutral-500">
-            {rent != null
-              ? `Renta ${fmtEur(rent)}/mes menos 18 % de gastos`
-              : "Sin renta estimada fiable"}
-          </p>
-        </div>
+      <div className="grid grid-cols-2 gap-2 border-t border-line p-3">
+        <MetricCard
+          label="Inversión total"
+          value={fmtEur(totalCost)}
+          size="sm"
+          note={
+            cash > 0 && Math.abs(cash - totalCost) > 1 ? `Con reforma prevista: ${fmtEur(cash)}` : undefined
+          }
+        />
+        <MetricCard
+          label="Rentabilidad neta"
+          value={roiNet != null ? roiNet.toFixed(2) : "—"}
+          unit={roiNet != null ? "%" : undefined}
+          sub={rent != null ? `${fmtEur(rent)}/mes − 18 % gastos` : "Sin renta fiable"}
+          size="sm"
+        />
       </div>
     </section>
   );
@@ -146,13 +138,13 @@ export function BeforeBuyingBlock({ summary, price }: { summary: ListingSummary;
     items: string[];
     tone: "ok" | "warn" | "neutral";
   }) => {
-    const dot = tone === "ok" ? "bg-emerald-500" : tone === "warn" ? "bg-amber-500" : "bg-neutral-400";
+    const dot = tone === "ok" ? "bg-lime" : tone === "warn" ? "bg-amber" : "bg-ink-muted/50";
     return (
       <div>
-        <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-700">{title}</h3>
+        <h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-muted">{title}</h3>
         <ul className="mt-2 space-y-2">
           {items.map((t) => (
-            <li key={t} className="flex gap-2 text-xs leading-snug text-neutral-700">
+            <li key={t} className="flex gap-2 text-[12px] leading-snug text-ink">
               <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
               <span>{t}</span>
             </li>
@@ -163,16 +155,16 @@ export function BeforeBuyingBlock({ summary, price }: { summary: ListingSummary;
   };
 
   return (
-    <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <div className="border-b border-neutral-200 px-5 py-4">
-        <h2 className="text-base font-bold text-neutral-950">Antes de comprar</h2>
-        <p className="mt-0.5 text-xs text-neutral-600">Lo bueno, lo que vigilar y qué comprobar.</p>
+    <section className="brasa-card overflow-hidden">
+      <div className="border-b border-line px-5 py-4">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink">Antes de comprar</h2>
+        <p className="mt-0.5 text-xs text-ink-muted">Lo bueno, lo que vigilar y qué comprobar.</p>
       </div>
       <div className="grid gap-5 px-5 py-4 sm:grid-cols-2">
         <Col title="A favor" items={pros} tone="ok" />
         <Col title={watch.length ? "A vigilar" : "Qué comprobar"} items={watch.length ? watch : check.slice(0, 3)} tone="warn" />
       </div>
-      <div className="border-t border-neutral-100 px-5 py-4">
+      <div className="border-t border-line px-5 py-4">
         <Col title="Qué comprobar" items={check} tone="neutral" />
       </div>
     </section>

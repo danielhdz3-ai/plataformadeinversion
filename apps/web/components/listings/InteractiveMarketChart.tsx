@@ -133,31 +133,31 @@ export function InteractiveMarketChart({
   ];
 
   return (
-    <section className="overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-950 text-white shadow-xl">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-800 px-5 py-4">
+    <section className="brasa-card overflow-hidden">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-500">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-muted">
             Evolución de mercado
           </p>
-          <h3 className="mt-1 text-lg font-semibold tracking-tight">
+          <h3 className="mt-1 text-lg font-bold tracking-tight text-ink">
             {series === "ops" ? "Actividad notarial" : "Precio por metro cuadrado"}
           </h3>
-          <p className="mt-1 max-w-xl text-xs text-neutral-400">
+          <p className="mt-1 max-w-xl text-[11px] text-ink-muted">
             {priceEvolution.sourceLabel ??
               "Serie basada en estadísticas del CP (notariado / estimación)."}
           </p>
         </div>
         <div className="text-right">
           {last && (
-            <p className="text-2xl font-bold tabular-nums tracking-tight">
+            <p className="text-2xl font-extrabold tabular-nums tracking-tight text-ink">
               {fmtEuro(last.y, series === "rent" ? 1 : 0)}
-              <span className="text-sm font-medium text-neutral-500">{unit}</span>
+              <span className="ml-1 text-sm font-semibold text-ink-muted">{unit}</span>
             </p>
           )}
           {changePct != null && series !== "ops" && (
             <p
-              className={`text-sm font-semibold tabular-nums ${
-                changePct >= 0 ? "text-emerald-400" : "text-red-400"
+              className={`text-sm font-bold tabular-nums ${
+                changePct >= 0 ? "text-lime" : "text-clay"
               }`}
             >
               {changePct >= 0 ? "+" : ""}
@@ -179,8 +179,8 @@ export function InteractiveMarketChart({
             }}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
               series === t.id
-                ? "bg-white text-neutral-950"
-                : "text-neutral-400 hover:bg-neutral-800 hover:text-white disabled:opacity-30"
+                ? "bg-lime text-lime-ink"
+                : "text-ink-muted hover:bg-raised hover:text-ink disabled:opacity-30"
             }`}
           >
             {t.label}
@@ -189,7 +189,7 @@ export function InteractiveMarketChart({
       </div>
 
       {coords.length < 2 ? (
-        <p className="px-5 py-12 text-sm text-neutral-500">
+        <p className="px-5 py-12 text-sm text-ink-muted">
           Sin histórico suficiente. Importa datos del Portal del Notariado para este CP.
         </p>
       ) : (
@@ -208,8 +208,8 @@ export function InteractiveMarketChart({
           >
             <defs>
               <linearGradient id="marketFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgba(52,211,153,0.35)" />
-                <stop offset="100%" stopColor="rgba(52,211,153,0)" />
+                <stop offset="0%" stopColor="rgba(198,242,78,0.30)" />
+                <stop offset="100%" stopColor="rgba(198,242,78,0)" />
               </linearGradient>
             </defs>
             {[0, 0.25, 0.5, 0.75, 1].map((t) => {
@@ -221,7 +221,7 @@ export function InteractiveMarketChart({
                   x2={w - pad.r}
                   y1={y}
                   y2={y}
-                  stroke="rgba(255,255,255,0.06)"
+                  stroke="var(--t-line)"
                   strokeWidth="1"
                 />
               );
@@ -229,7 +229,7 @@ export function InteractiveMarketChart({
             <polygon points={pathArea} fill="url(#marketFill)" />
             <polyline
               fill="none"
-              stroke="#34d399"
+              stroke="var(--t-lime)"
               strokeWidth="2.5"
               strokeLinejoin="round"
               points={pathLine}
@@ -251,7 +251,7 @@ export function InteractiveMarketChart({
                 cx={c.x}
                 cy={c.y}
                 r={hover === i ? 6 : 3}
-                fill={hover === i ? "#fff" : "#34d399"}
+                fill={hover === i ? "var(--t-ink)" : "var(--t-lime)"}
                 className="transition-all"
               />
             ))}
@@ -262,7 +262,7 @@ export function InteractiveMarketChart({
                   x2={hoverPoint.x}
                   y1={pad.t}
                   y2={h - pad.b}
-                  stroke="rgba(255,255,255,0.25)"
+                  stroke="var(--t-muted)"
                   strokeWidth="1"
                 />
               </>
@@ -270,19 +270,19 @@ export function InteractiveMarketChart({
           </svg>
           {hoverPoint && (
             <div
-              className="pointer-events-none absolute top-4 rounded-lg border border-neutral-700 bg-neutral-900/95 px-3 py-2 text-xs shadow-lg backdrop-blur"
+              className="pointer-events-none absolute top-4 rounded-lg border border-line bg-deep/95 px-3 py-2 text-xs text-ink shadow-lg backdrop-blur"
               style={{
                 left: `clamp(12px, ${(hoverPoint.x / w) * 100}%, calc(100% - 140px))`,
               }}
             >
-              <p className="font-medium text-neutral-300">{hoverPoint.px.x}</p>
+              <p className="font-semibold text-ink">{hoverPoint.px.x}</p>
               <p className="text-base font-bold tabular-nums text-white">
                 {fmtEuro(hoverPoint.px.y, series === "rent" ? 1 : 0)}
                 {unit}
               </p>
             </div>
           )}
-          <div className="flex justify-between px-4 text-[10px] text-neutral-500">
+          <div className="flex justify-between px-4 text-[10px] text-ink-muted">
             <span>{activePoints[0]?.x}</span>
             <span>{activePoints.at(-1)?.x}</span>
           </div>
@@ -296,3 +296,4 @@ export function InteractiveMarketChart({
     </section>
   );
 }
+

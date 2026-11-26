@@ -4,18 +4,21 @@ import { formatScrapedAgeEs } from "@/lib/listing/opportunity-metrics";
 import type { OpportunityMetrics } from "@/lib/listing/opportunity-metrics";
 import { SELLER_KIND_LABEL } from "@/lib/listing/seller-kind";
 
+/**
+ * Badges Brasa: una sola forma (pill), un solo peso tipográfico y
+ * colores exclusivamente de la paleta. Sin bordes ni tintes ajenos.
+ */
+const pill =
+  "inline-flex items-center rounded-full px-2 py-[3px] text-[10px] font-bold uppercase tracking-[0.06em] leading-none";
+
 export function OpportunityVerifiedBadge() {
-  return (
-    <span className="rounded-md bg-orange-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-      Oportunidad
-    </span>
-  );
+  return <span className={`${pill} bg-lime text-lime-ink`}>Oportunidad</span>;
 }
 
 export function DiscountPctBadge({ pct }: { pct: number | null | undefined }) {
   if (pct == null || pct < 5) return null;
   return (
-    <span className="rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-bold tabular-nums text-white">
+    <span className={`${pill} bg-lime text-lime-ink tabular-nums normal-case`}>
       −{Math.round(pct)} %
     </span>
   );
@@ -24,28 +27,24 @@ export function DiscountPctBadge({ pct }: { pct: number | null | undefined }) {
 export function OpportunityScoreBadge({ score }: { score: number | null | undefined }) {
   if (score == null) return null;
   const tone =
-    score >= 75 ? "bg-emerald-700 text-white" : score >= 50 ? "bg-amber-600 text-white" : "bg-neutral-600 text-white";
-  return (
-    <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ${tone}`}>
-      {score}/100
-    </span>
-  );
+    score >= 75
+      ? "bg-mint text-lime-ink"
+      : score >= 50
+        ? "bg-amber text-lime-ink"
+        : "bg-raised text-ink-muted";
+  return <span className={`${pill} tabular-nums normal-case ${tone}`}>{score}/100</span>;
 }
 
 export function SellerKindBadge({ kind }: { kind: OpportunityMetrics["sellerKind"] }) {
   if (kind === "unknown") return null;
   const styles: Record<string, string> = {
-    bank: "border-sky-300 bg-sky-50 text-sky-950",
-    agency: "border-violet-300 bg-violet-50 text-violet-950",
-    private: "border-neutral-300 bg-neutral-50 text-neutral-800",
-    auction: "border-orange-300 bg-orange-50 text-orange-950",
+    bank: "bg-mint/15 text-mint",
+    agency: "bg-ink/10 text-ink",
+    private: "bg-ink/10 text-ink",
+    auction: "bg-clay/15 text-clay",
   };
   return (
-    <span
-      className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${styles[kind] ?? styles.agency}`}
-    >
-      {SELLER_KIND_LABEL[kind]}
-    </span>
+    <span className={`${pill} ${styles[kind] ?? styles.agency}`}>{SELLER_KIND_LABEL[kind]}</span>
   );
 }
 
@@ -68,30 +67,30 @@ export function ValuationSnippet({
       ? `${Math.round(valuationLow).toLocaleString("es-ES")}–${Math.round(valuationHigh).toLocaleString("es-ES")} €`
       : null;
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
-      <span className="font-bold tabular-nums text-neutral-950">{price.toLocaleString("es-ES")} €</span>
-      <span className="text-neutral-500">·</span>
-      <span className="tabular-nums text-emerald-800">
-        ≈ {valuationMid.toLocaleString("es-ES")} € valoración
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+      <span className="text-[19px] font-extrabold leading-none tabular-nums tracking-tight text-ink">
+        {price.toLocaleString("es-ES")} <span className="text-xs font-semibold text-ink-muted">€</span>
+      </span>
+      <span className="tabular-nums text-ink-muted">
+        ≈ <span className="font-semibold text-ink">{valuationMid.toLocaleString("es-ES")} €</span> valoración
       </span>
       {discountPct != null && discountPct > 3 && (
-        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-900">
+        <span className={`${pill} bg-lime/15 tabular-nums text-lime normal-case`}>
           −{discountPct.toFixed(0)} % bajo valor
         </span>
       )}
       {discountPct != null && discountPct < -3 && (
-        <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-900">
+        <span className={`${pill} bg-clay/15 tabular-nums text-clay normal-case`}>
           +{Math.abs(discountPct).toFixed(0)} % sobre valor
         </span>
       )}
-      {range && <span className="w-full text-[10px] text-neutral-500">Horquilla habitual: {range}</span>}
+      {range && <span className="w-full text-[10px] text-ink-muted/70">Horquilla habitual: {range}</span>}
     </div>
   );
 }
 
 /**
  * Marquesina de valoración: "Pagas X € por un piso valorado en Y €".
- * Requiere 2 líneas y transmite el descuento en una sola frase.
  */
 export function PriceVsValuationHeadline({
   price,
@@ -110,26 +109,21 @@ export function PriceVsValuationHeadline({
 }) {
   const fmt = (n: number) => Math.round(n).toLocaleString("es-ES");
   if (valuationMid == null) {
-    return (
-      <p className="text-3xl font-bold tabular-nums tracking-tight text-neutral-950">
-        {fmt(price)} €
-      </p>
-    );
+    return <p className="text-3xl font-extrabold tabular-nums tracking-tight text-ink">{fmt(price)} €</p>;
   }
   const under = discountPct != null && discountPct > 0;
   return (
     <div className="space-y-1">
-      <p className="text-2xl font-bold leading-snug tracking-tight text-neutral-950 sm:text-3xl">
-        Pagas{" "}
-        <span className="tabular-nums text-neutral-950">{fmt(price)} €</span> por {propertyLabel} valorada en{" "}
-        <span className="tabular-nums text-emerald-700">{fmt(valuationMid)} €</span>
+      <p className="text-2xl font-extrabold leading-snug tracking-tight text-ink sm:text-3xl">
+        Pagas <span className="tabular-nums">{fmt(price)} €</span> por {propertyLabel} valorada en{" "}
+        <span className="tabular-nums text-lime">{fmt(valuationMid)} €</span>
         {under && discountPct != null && (
-          <span className="ml-1 rounded-md bg-emerald-600 px-2 py-0.5 align-middle text-sm font-bold tabular-nums text-white">
+          <span className="ml-1.5 rounded-full bg-lime px-2.5 py-0.5 align-middle text-sm font-bold tabular-nums text-lime-ink">
             −{Math.round(discountPct)} %
           </span>
         )}
       </p>
-      <p className="text-xs text-neutral-600">
+      <p className="text-xs text-ink-muted">
         {valuationLow != null && valuationHigh != null
           ? `Horquilla razonable ${fmt(valuationLow)}–${fmt(valuationHigh)} € · `
           : ""}
@@ -142,5 +136,5 @@ export function PriceVsValuationHeadline({
 export function ScrapedAgeLabel({ metrics }: { metrics: OpportunityMetrics | null | undefined }) {
   const label = formatScrapedAgeEs(metrics?.scrapedAgeDays ?? null);
   if (!label) return null;
-  return <span className="text-[10px] text-neutral-500">{label}</span>;
+  return <span className="text-[10px] text-ink-muted"> · {label}</span>;
 }

@@ -9,6 +9,7 @@ import {
 } from "@/components/listings/OpportunityBadges";
 import { ListingResumenPanel } from "@/components/listings/ListingResumenPanel";
 import { BeforeBuyingBlock, DealNumbersBlock } from "@/components/listings/DealNarrativeBlocks";
+import { MetricCard, MetricRow } from "@/components/ui/MetricCard";
 import { NeighborhoodGauge } from "@/components/listings/NeighborhoodGauge";
 import { NotariadoPortalPanel } from "@/components/notariado/NotariadoPortalPanel";
 import { PriceValuationSlider } from "@/components/listings/PriceValuationSlider";
@@ -129,14 +130,14 @@ export function ListingDetailFullView({
                   <OpportunityScoreBadge score={summary.opportunity.opportunityScore} />
                 </>
               )}
-              <span className="rounded-md bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase text-white backdrop-blur">
+              <span className="rounded-full bg-void/60 px-2.5 py-1 text-[10px] font-bold uppercase text-ink backdrop-blur">
                 {portal.name}
               </span>
             </div>
-            <h1 className="text-2xl font-bold leading-tight text-white sm:text-3xl">
+            <h1 className="text-2xl font-extrabold leading-tight tracking-tight text-ink sm:text-3xl">
               {cleanListingTitle(listing.title, listing.property_kind ?? null)}
             </h1>
-            <p className="text-sm text-neutral-200">
+            <p className="text-sm text-ink-muted">
               {listing.city} · CP {listing.postal_code}
               {specs ? ` · ${specs}` : ""}
             </p>
@@ -144,8 +145,8 @@ export function ListingDetailFullView({
         </div>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f4f3f0]">
-        <div className="shrink-0 border-b border-neutral-200 bg-white px-4 py-4 sm:px-6 lg:px-8">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-void">
+        <div className="shrink-0 border-b border-line bg-deep px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <PriceVsValuationHeadline
@@ -159,15 +160,15 @@ export function ListingDetailFullView({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {roi != null && (
-                <div className="rounded-xl bg-neutral-950 px-4 py-2 text-center">
-                  <p className="text-[9px] font-semibold uppercase tracking-wider text-neutral-400">ROI bruto</p>
-                  <p className="text-xl font-bold tabular-nums text-emerald-400">{roi.toFixed(2)} %</p>
+                <div className="rounded-xl border border-line bg-surface px-4 py-2 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-muted">ROI bruto</p>
+                  <p className="text-xl font-extrabold tabular-nums text-lime">{roi.toFixed(2)} %</p>
                 </div>
               )}
               {listingM2 != null && (
-                <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2 text-center">
-                  <p className="text-[9px] font-semibold uppercase tracking-wider text-neutral-500">Anuncio</p>
-                  <p className="text-lg font-bold tabular-nums text-neutral-950">
+                <div className="rounded-xl border border-line bg-surface px-4 py-2 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-muted">Anuncio</p>
+                  <p className="text-lg font-extrabold tabular-nums text-ink">
                     {Math.round(listingM2).toLocaleString("es-ES")} €/m²
                   </p>
                 </div>
@@ -176,7 +177,7 @@ export function ListingDetailFullView({
                 href={listing.source_url}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-700"
+                className="rounded-xl bg-lime px-4 py-2.5 text-sm font-bold text-lime-ink transition hover:brightness-105"
               >
                 Ver en {portal.name}
               </a>
@@ -189,7 +190,7 @@ export function ListingDetailFullView({
           )}
         </div>
 
-        <div className="shrink-0 border-b border-neutral-200 bg-white px-4 sm:px-6 lg:px-8">
+        <div className="shrink-0 border-b border-line bg-deep px-4 sm:px-6 lg:px-8">
           <nav className="-mb-px flex gap-1 overflow-x-auto py-2">
             {tabs.map((t) => (
               <button
@@ -198,8 +199,8 @@ export function ListingDetailFullView({
                 onClick={() => setTab(t.id)}
                 className={`shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition ${
                   tab === t.id
-                    ? "bg-neutral-950 text-white"
-                    : "text-neutral-600 hover:bg-neutral-100"
+                    ? "bg-lime text-lime-ink"
+                    : "text-ink-muted hover:bg-raised hover:text-ink"
                 }`}
               >
                 {t.label}
@@ -215,7 +216,7 @@ export function ListingDetailFullView({
             </div>
           )}
           {summaryLoading && !summary && (
-            <p className="mb-6 rounded-xl border border-neutral-200 bg-white p-6 text-sm text-neutral-600">
+            <p className="mb-6 rounded-xl border border-line bg-surface p-6 text-sm text-ink-muted">
               Cargando métricas de mercado…
             </p>
           )}
@@ -227,7 +228,7 @@ export function ListingDetailFullView({
                 <>
                   <DealNumbersBlock summary={summary} price={price} />
                   <BeforeBuyingBlock summary={summary} price={price} />
-                  <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+                  <div className="overflow-hidden rounded-2xl border border-line bg-surface">
                     <ListingResumenPanel summary={summary} listingId={listing.id} embedded showAi={false} />
                   </div>
                 </>
@@ -238,30 +239,31 @@ export function ListingDetailFullView({
           {tab === "inversion" && (
             <div className="space-y-4">
               {summary ? (
-                <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+                <div className="overflow-hidden rounded-2xl border border-line bg-surface">
                   <ListingResumenPanel summary={summary} listingId={listing.id} embedded showAi={false} />
                 </div>
               ) : listing.investment ? (
-                <dl className="grid gap-3 rounded-xl border border-neutral-200 bg-white p-6 text-sm sm:grid-cols-3">
-                  <div>
-                    <dt className="text-neutral-500">Renta est.</dt>
-                    <dd className="text-lg font-bold tabular-nums">{listing.investment.rent_est} €/mes</dd>
-                  </div>
-                  <div>
-                    <dt className="text-neutral-500">ROI bruto</dt>
-                    <dd className="text-lg font-bold tabular-nums">{listing.investment.roi_gross?.toFixed(2)} %</dd>
-                  </div>
-                  <div>
-                    <dt className="text-neutral-500">Confianza</dt>
-                    <dd className="font-medium">
-                      {listing.investment.rent_confidence} ({listing.investment.comparables_count} comp.)
-                    </dd>
-                  </div>
-                </dl>
+                <div className="grid gap-2 rounded-2xl border border-line bg-surface p-4 sm:grid-cols-3">
+                  <MetricCard
+                    label="Renta estimada"
+                    value={String(listing.investment.rent_est ?? "—")}
+                    unit="€/mes"
+                  />
+                  <MetricCard
+                    label="ROI bruto"
+                    value={listing.investment.roi_gross?.toFixed(2) ?? "—"}
+                    unit="%"
+                  />
+                  <MetricCard
+                    label="Confianza"
+                    value={listing.investment.rent_confidence ?? "—"}
+                    sub={`${listing.investment.comparables_count} comparables`}
+                  />
+                </div>
               ) : null}
               <Link
                 href={calcHref}
-                className="inline-flex rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white"
+                className="inline-flex rounded-full bg-lime px-5 py-3 text-sm font-bold text-lime-ink"
               >
                 Calculadora completa →
               </Link>
@@ -271,8 +273,10 @@ export function ListingDetailFullView({
           {tab === "mercado" && (
             <div className="space-y-6">
               {summary?.neighborhood.listingPriceM2 != null && summary.neighborhood.cpAvgPriceM2 != null && (
-                <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-                  <h3 className="text-sm font-semibold text-neutral-950">Posición vs media del CP</h3>
+                <section className="brasa-card p-5">
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink">
+                    Posición vs media del CP
+                  </h3>
                   <div className="mt-4">
                     <NeighborhoodGauge
                       listingM2={summary.neighborhood.listingPriceM2}
@@ -285,51 +289,45 @@ export function ListingDetailFullView({
               {summary?.notary?.portal ? (
                 <NotariadoPortalPanel portal={summary.notary.portal} />
               ) : summary?.notary ? (
-                <dl className="grid gap-4 rounded-xl border border-neutral-200 bg-white p-6 sm:grid-cols-2">
-                  <div>
-                    <dt className="text-xs text-neutral-500">Precio medio / m²</dt>
-                    <dd className="text-lg font-bold tabular-nums">
-                      {summary.notary.priceM2?.toLocaleString("es-ES") ?? "—"} €
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-neutral-500">Compraventas (periodo)</dt>
-                    <dd className="text-lg font-bold tabular-nums">{summary.notary.operationsCount ?? "—"}</dd>
-                  </div>
-                </dl>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <MetricCard
+                    label="Precio medio por m²"
+                    value={summary.notary.priceM2 != null ? summary.notary.priceM2.toLocaleString("es-ES") : "—"}
+                    unit="€/m²"
+                  />
+                  <MetricCard
+                    label="Compraventas"
+                    value={summary.notary.operationsCount != null ? String(summary.notary.operationsCount) : "—"}
+                    sub={summary.notary.period ? `Periodo ${summary.notary.period}` : undefined}
+                  />
+                </div>
               ) : (
-                <p className="text-sm text-neutral-600">Sin datos notariales para este CP.</p>
+                <p className="text-sm text-ink-muted">Sin datos notariales para este CP.</p>
               )}
             </div>
           )}
 
           {tab === "catastro" && (
-            <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
-              <h3 className="font-semibold text-neutral-950">Catastro</h3>
+            <section className="brasa-card p-6">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink">Catastro</h3>
               {listing.enrichment?.rc ? (
-                <dl className="mt-3 space-y-2 text-sm text-neutral-800">
-                  <div>
-                    <dt className="text-neutral-500">Referencia catastral</dt>
-                    <dd className="font-mono font-medium">{listing.enrichment.rc}</dd>
-                  </div>
+                <div className="mt-3 space-y-1">
+                  <MetricRow label="Referencia catastral" value={listing.enrichment.rc} />
                   {listing.enrichment.catastral_surface != null && (
-                    <div>
-                      <dt className="text-neutral-500">Superficie catastral</dt>
-                      <dd>{listing.enrichment.catastral_surface} m²</dd>
-                    </div>
+                    <MetricRow
+                      label="Superficie catastral"
+                      value={`${listing.enrichment.catastral_surface} m²`}
+                    />
                   )}
                   {listing.enrichment.year_built != null && (
-                    <div>
-                      <dt className="text-neutral-500">Año construcción</dt>
-                      <dd>{listing.enrichment.year_built}</dd>
-                    </div>
+                    <MetricRow label="Año de construcción" value={String(listing.enrichment.year_built)} />
                   )}
-                </dl>
+                </div>
               ) : (
                 <>
-                  <p className="mt-2 text-sm text-neutral-600">Datos catastrales pendientes.</p>
+                  <p className="mt-2 text-sm text-ink-muted">Datos catastrales pendientes.</p>
                   {enrichError && (
-                    <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+                    <p className="mt-2 rounded-lg border border-clay/40 bg-clay/10 px-3 py-2 text-sm text-clay">
                       {enrichError}
                     </p>
                   )}
@@ -337,7 +335,7 @@ export function ListingDetailFullView({
                     type="button"
                     disabled={enriching}
                     onClick={onEnrichCatastro}
-                    className="mt-4 rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                    className="mt-4 rounded-full border border-line px-4 py-2 text-sm font-semibold text-ink transition hover:border-lime/60 hover:text-lime disabled:opacity-50"
                   >
                     {enriching ? "Consultando OVC…" : "Enriquecer (Catastro OVC)"}
                   </button>

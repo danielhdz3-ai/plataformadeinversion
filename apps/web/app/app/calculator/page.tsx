@@ -19,9 +19,10 @@ function CalculatorPageContent() {
 export default function CalculatorPage() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <Suspense fallback={<div className="p-8 text-sm text-neutral-600">Cargando calculadora…</div>}>
+      <Suspense fallback={<div className="p-8 text-sm text-ink-muted">Cargando calculadora…</div>}>
         <CalculatorPageContent />
       </Suspense>
     </div>
   );
 }
+
