@@ -136,8 +136,23 @@ export default function InicioPage() {
         if (cancelled) return;
         const body = (feedRes && feedRes.ok ? await feedRes.json() : {}) as FeedResponse;
         const hero = (heroRes && heroRes.ok ? await heroRes.json() : { items: [] }) as { items?: HeroDeal[] };
-        setItems(body.items ?? []);
-        setTotal(body.totalQualified ?? body.items?.length ?? 0);
+        const fetched = body.items ?? [];
+        const checked = await Promise.all(
+          fetched.slice(0, 12).map(async (it) => {
+            const thumb = it.thumbnailUrl;
+            if (!thumb) return { ...it, thumbnailUrl: null };
+            try {
+              const r = await fetch(thumb, { method: "HEAD" });
+              if (!r.ok) return { ...it, thumbnailUrl: null };
+            } catch {
+              return { ...it, thumbnailUrl: null };
+            }
+            return it;
+          })
+        );
+        const all = [...checked, ...fetched.slice(12)];
+        setItems(all);
+        setTotal(Math.max(body.totalQualified ?? 0, all.length));
         setMarquee(hero.items ?? []);
         if (!feedRes || !feedRes.ok) setFeedError(true);
       } catch {
@@ -200,12 +215,17 @@ export default function InicioPage() {
               Catálogo en vivo · {provinces || "—"} municipios
             </div>
             <h1 className="mt-3 max-w-3xl text-[32px] font-extrabold leading-[1.06] tracking-[-1.2px] text-ink sm:text-[42px]">
-              Hay{" "}
-              <span className="text-lime">
-                <AnimatedNumber value={total ?? items.length} />
-              </span>{" "}
-              oportunidades reales.{" "}
-              <span className="text-ink-muted">Las mejores, primero.</span>
+              {total != null && total > 0 ? (
+                <>
+                  Hay <span className="text-lime">{Math.max(total, items.length)}</span> oportunidades reales.{" "}
+                  <span className="text-ink-muted">Las mejores, primero.</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-lime">Radar</span> encendido.{" "}
+                  <span className="text-ink-muted">Escaneando el mercado ahora.</span>
+                </>
+              )}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-muted">
               Inmuebles de bancos y particulares con descuento frente a su valoración notarial, rentabilidad

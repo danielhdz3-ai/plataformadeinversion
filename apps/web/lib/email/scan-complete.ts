@@ -22,7 +22,7 @@ export async function notifyScanCompleteIfRequested(scanId: string): Promise<voi
 
   const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const url = `${site}/app/scan/${scanId}`;
-  const appName = process.env.NEXT_PUBLIC_APP_NAME ?? "Plataforma de inversión";
+  const appName = process.env.NEXT_PUBLIC_APP_NAME ?? "Radar Inversión";
 
   const result = await sendResendEmail({
     to: userData.user.email,

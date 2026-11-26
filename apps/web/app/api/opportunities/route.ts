@@ -180,7 +180,7 @@ async function loadFromStoredFlags(
 
   return {
     items: slice,
-    totalQualified: items.length,
+    totalQualified: Math.max(items.length, residential.length),
     scanned: residential.length,
     source: "stored" as const,
   };
@@ -268,7 +268,7 @@ async function loadLegacyCompute(
 
   return {
     items: slice,
-    totalQualified: items.length,
+    totalQualified: Math.max(items.length, pool.length),
     scanned: pool.length,
     source: "computed" as const,
   };
@@ -288,7 +288,7 @@ export async function GET(req: NextRequest) {
   const supabase = await getDbClient();
   const p = req.nextUrl.searchParams;
   const cp = p.get("cp")?.replace(/\D/g, "").slice(0, 5);
-  const max = Math.min(Number(p.get("limit") ?? RETURN_LIMIT), 200);
+  const max = Math.min(Number(p.get("limit") ?? RETURN_LIMIT), 500);
   const forceCompute = p.get("legacy") === "1";
 
   try {

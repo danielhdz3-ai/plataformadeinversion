@@ -131,6 +131,78 @@ input[type="range"] {
   accent-color: var(--t-lime);
 }
 
+/* ── Marca: barrido de radar ── */
+@keyframes ri-sweep-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ri-sweep {
+  animation: ri-sweep-rot 4.2s linear infinite;
+}
+
+@keyframes ri-ping {
+  0% {
+    opacity: 1;
+    transform: scale(0.6);
+  }
+  70% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.ri-ping {
+  animation: ri-ping 2.6s ease-out infinite;
+}
+
+.ri-lift {
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.group:hover .ri-lift {
+  transform: scale(1.06) rotate(-4deg);
+}
+
+/* Barrido del pie de marca en el header */
+.ri-brand-shine {
+  position: relative;
+}
+
+.ri-brand-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--t-lime) 14%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 220% 100%;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+
+.ri-brand-shine:hover::after {
+  opacity: 1;
+  animation: brasa-shimmer 2.2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ri-sweep,
+  .ri-ping {
+    animation: none;
+  }
+}
+
 /* Halo de acento para héroes y cifras clave */
 .brasa-glow {
   position: relative;
