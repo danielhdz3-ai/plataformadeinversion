@@ -16,6 +16,7 @@ import {
 import { fetchListingRowsInChunks } from "@/lib/supabase/fetch-in-chunks";
 import { getDbClient, requireAppUser } from "@/lib/supabase/request-client";
 import { filterListings, parseMapListingFilterParams } from "@/lib/map/map-listing-filters";
+import { EXPLORAR_MIN_ZOOM_FOR_BBOX } from "@/lib/map/cp-zone-stock";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -32,8 +33,17 @@ export async function GET(req: NextRequest) {
   const maxLng = Number(p.get("maxLng"));
   const maxLat = Number(p.get("maxLat"));
   const zoom = p.get("zoom") != null ? Number(p.get("zoom")) : null;
+  const cpHint = p.get("cp")?.trim();
   if ([minLng, minLat, maxLng, maxLat].some((n) => Number.isNaN(n))) {
     return NextResponse.json({ error: "Invalid bbox", code: "VALIDATION" }, { status: 400 });
+  }
+
+  if (!cpHint && zoom != null && zoom < EXPLORAR_MIN_ZOOM_FOR_BBOX) {
+    return NextResponse.json({
+      features: [],
+      hint: "importa_un_cp_o_acerca_el_mapa",
+      minZoom: EXPLORAR_MIN_ZOOM_FOR_BBOX,
+    });
   }
 
   const mapFiltersEarly = parseMapListingFilterParams(p);

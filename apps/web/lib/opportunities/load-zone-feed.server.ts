@@ -1,9 +1,13 @@
 import { decodeListingTitle } from "@/lib/decode-html";
-import { ZONE_STOCK_TARGET } from "@/lib/map/geocode-spain";
+import { cpRadiusSteps, ZONE_STOCK_TARGET } from "@/lib/map/cp-zone-stock";
 import { grossRoiForDisplay } from "@/lib/listing/display-roi";
 import { buildSummariesBatch } from "@/lib/listing/build-summaries-batch";
 import { resolveListingGrossRoiPct } from "@/lib/listing/gross-roi";
-import { qualifiesAsOpportunity, quickOpportunityCandidate } from "@/lib/listing/opportunity-qualify";
+import {
+  listingWithinFreshWindow,
+  qualifiesAsOpportunity,
+  quickOpportunityCandidate,
+} from "@/lib/listing/opportunity-qualify";
 import { resolveRentEstMonthly } from "@/lib/listing/rent-est";
 import { isResidentialPropertyKind } from "@/lib/listing/residential-kind";
 import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
@@ -96,8 +100,9 @@ export async function listingIdsInZone(
     merged.set(row.id, row);
   }
 
-  const bboxThreshold = Math.min(50, Math.max(12, Math.floor(maxRows * 0.08)));
-  if (merged.size < bboxThreshold) {
+  const exactRows = [...merged.values()].filter((r) => r.postal_code === cp);
+  /** El RPC limita filas: si apenas hay anuncios del CP exacto, complementamos por bbox. */
+  if (exactRows.length < Math.min(40, Math.max(8, Math.floor(maxRows * 0.1)))) {
     const bbox = bboxFromCenter(lat, lng, radiusM);
     const cap = Math.max(60, Math.ceil(maxRows / MAP_PORTALS.length));
     const batches = await Promise.all(
@@ -153,29 +158,47 @@ export async function loadZoneOpportunityFeed(
     cp: string;
     radiusM: number;
     limit: number;
+    offset?: number;
+    maxAgeDays?: number;
     chollosOnly?: boolean;
   }
 ) {
-  const baseRadius = Math.min(15_000, Math.max(2500, opts.radiusM));
-  const radiusSteps = [
-    baseRadius,
-    Math.min(15_000, Math.round(baseRadius * 1.35)),
-    Math.min(15_000, Math.round(baseRadius * 1.75)),
-    15_000,
-  ].filter((v, i, a) => a.indexOf(v) === i);
+  const maxAgeDays = opts.maxAgeDays ?? 14;
+  const offset = Math.max(0, opts.offset ?? 0);
+  /**
+   * Zona por barrio/municipio (sin CP): radios amplios.
+   * CP concreto: primero el radio ajustado al bbox del CP (área ≈ código postal)
+   * y luego se amplía si el stock no llega al objetivo.
+   */
+  const radiusSteps = opts.cp
+    ? cpRadiusSteps(opts.radiusM)
+    : cpRadiusSteps(Math.max(opts.radiusM, 9000)).concat(20_000);
 
   const maxRows = Math.min(800, Math.max(opts.limit, 200));
-  let radiusM = baseRadius;
+  let radiusM = radiusSteps[0] ?? opts.radiusM;
   let rpcRows: Awaited<ReturnType<typeof listingIdsInZone>> = [];
   for (const r of radiusSteps) {
     radiusM = r;
     rpcRows = await listingIdsInZone(supabase, opts.lat, opts.lng, opts.cp, radiusM, maxRows);
     if (rpcRows.length >= ZONE_STOCK_TARGET) break;
+    if (offset > 0 && rpcRows.length > offset) break;
   }
   const pinById = new Map(rpcRows.map((r) => [r.id, { lng: r.lng, lat: r.lat }]));
   const ids = rpcRows.map((r) => r.id);
+  const exactTagged = rpcRows.filter((r) => r.postal_code === opts.cp).length;
   if (!ids.length) {
-    return { items: [], totalInZone: 0, opportunitiesInZone: 0, totalActiveInZone: 0 };
+    return {
+      items: [],
+      totalInZone: 0,
+      opportunitiesInZone: 0,
+      totalActiveInZone: 0,
+      hasMore: false,
+      nextOffset: 0,
+      maxAgeDays,
+      radiusM,
+      exactTagged: 0,
+      cp: opts.cp,
+    };
   }
 
   const rows = await fetchListingRowsInChunks<ZoneListingRow>(
@@ -185,9 +208,10 @@ export async function loadZoneOpportunityFeed(
     ids
   );
 
-  const residential = rows.filter((r) =>
-    isResidentialPropertyKind(r.property_kind as string | null)
-  );
+  const residential = rows.filter((r) => {
+    if (!isResidentialPropertyKind(r.property_kind as string | null)) return false;
+    return listingWithinFreshWindow(r.scraped_at as string | null, maxAgeDays);
+  });
 
   const forSummary = residential.map((r) => {
     const inv = invRow(r.listing_investment);
@@ -274,14 +298,18 @@ export async function loadZoneOpportunityFeed(
       (b.summary.opportunity.opportunityScore ?? 0) - (a.summary.opportunity.opportunityScore ?? 0)
   );
 
-  const slice = items.slice(0, opts.limit);
+  const page = items.slice(offset, offset + opts.limit);
 
   return {
-    items: slice,
+    items: page,
     totalInZone: residential.length,
     totalActiveInZone: residential.length,
-    opportunitiesInZone: opportunitiesInZone,
+    opportunitiesInZone,
+    hasMore: offset + opts.limit < items.length,
+    nextOffset: offset + page.length,
+    maxAgeDays,
     radiusM,
+    exactTagged,
     cp: opts.cp,
   };
 }

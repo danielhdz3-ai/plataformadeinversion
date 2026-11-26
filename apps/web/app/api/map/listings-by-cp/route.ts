@@ -3,6 +3,10 @@ import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { resolveListingGrossRoiPct } from "@/lib/listing/gross-roi";
 import { resolveRentEstMonthly } from "@/lib/listing/rent-est";
 import { interleaveByPortal } from "@/lib/map/balance-listings-by-portal";
+import { cpStockBaseRadiusM } from "@/lib/map/cp-priority";
+import { cpRadiusSteps, ZONE_STOCK_TARGET } from "@/lib/map/cp-zone-stock";
+import { ensureCpStockIngest } from "@/lib/scrape/ensure-cp-stock.server";
+import { listingWithinFreshWindow } from "@/lib/listing/opportunity-qualify";
 import { geocodeSpainQuery } from "@/lib/map/geocode-spain";
 import { portalsForCpLiveImport } from "@/lib/scrape/cp-live-portals";
 import { refreshPostalCodeLive } from "@/lib/scrape/scrape-postal-code.server";
@@ -27,7 +31,9 @@ export async function GET(req: NextRequest) {
   const live = req.nextUrl.searchParams.get("live") !== "0";
   const waitForScrape = req.nextUrl.searchParams.get("wait") === "1";
   const maxRows = Number(req.nextUrl.searchParams.get("max") ?? "800");
-  const radiusM = Number(req.nextUrl.searchParams.get("radiusM") ?? "5500");
+  const radiusM = Number(
+    req.nextUrl.searchParams.get("radiusM") ?? String(cpStockBaseRadiusM(cp))
+  );
 
   const hits = await geocodeSpainQuery(cp);
   const center = hits[0];
@@ -43,7 +49,7 @@ export async function GET(req: NextRequest) {
     const portals = portalsForCpLiveImport();
     after(async () => {
       try {
-        await refreshPostalCodeLive(cp, { portals, force: true });
+        await ensureCpStockIngest(cp, { forceScrape: true });
       } catch (e) {
         console.error("cp scrape background", cp, e);
       }
@@ -65,13 +71,6 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = await getDbClient();
-
-  await supabase.rpc("tag_listings_postal_code", {
-    p_cp: cp,
-    p_lng: center.lng,
-    p_lat: center.lat,
-    p_radius_m: radiusM,
-  });
 
   type RpcRow = {
     id: string;
@@ -97,35 +96,64 @@ export async function GET(req: NextRequest) {
   ] as const;
 
   const perPortal = Math.ceil(maxRows / portals.length) + 50;
-  const batches = await Promise.all(
-    portals.map(async (portal) => {
-      const { data, error } = await supabase.rpc("listings_for_postal_code", {
-        p_cp: cp,
-        p_lng: center.lng,
-        p_lat: center.lat,
-        p_radius_m: radiusM,
-        max_rows: perPortal,
-        portal_filter: portal,
-      });
-      return { portal, data, error };
-    })
-  );
-  for (const { error, data } of batches) {
-    if (error) {
-      if (/listings_for_postal_code|function/i.test(error.message)) {
-        return NextResponse.json(
-          { error: "Función CP no desplegada", code: "MIGRATION" },
-          { status: 503 }
-        );
+  let usedRadius = radiusM;
+  for (const r of cpRadiusSteps(radiusM)) {
+    usedRadius = r;
+    await supabase.rpc("tag_listings_postal_code", {
+      p_cp: cp,
+      p_lng: center.lng,
+      p_lat: center.lat,
+      p_radius_m: r,
+    });
+    merged.clear();
+    const batches = await Promise.all(
+      portals.map(async (portal) => {
+        const { data, error } = await supabase.rpc("listings_for_postal_code", {
+          p_cp: cp,
+          p_lng: center.lng,
+          p_lat: center.lat,
+          p_radius_m: r,
+          max_rows: perPortal,
+          portal_filter: portal,
+        });
+        return { portal, data, error };
+      })
+    );
+    let batchErr: string | null = null;
+    for (const { error, data } of batches) {
+      if (error) {
+        if (/listings_for_postal_code|function/i.test(error.message)) {
+          return NextResponse.json(
+            { error: "Función CP no desplegada", code: "MIGRATION" },
+            { status: 503 }
+          );
+        }
+        batchErr = error.message;
+        break;
       }
-      return NextResponse.json({ error: error.message, code: "DB" }, { status: 500 });
+      for (const row of (data ?? []) as RpcRow[]) {
+        merged.set(row.id, row);
+      }
     }
-    for (const row of (data ?? []) as RpcRow[]) {
-      merged.set(row.id, row);
+    if (batchErr) {
+      return NextResponse.json({ error: batchErr, code: "DB" }, { status: 500 });
     }
+    if (merged.size >= ZONE_STOCK_TARGET) break;
   }
 
-  const rows = [...merged.values()].slice(0, maxRows);
+  if (live && merged.size < ZONE_STOCK_TARGET) {
+    refreshStarted = true;
+    after(async () => {
+      try {
+        await ensureCpStockIngest(cp, { forceScrape: true });
+      } catch (e) {
+        console.error("cp stock ensure", cp, e);
+      }
+    });
+  }
+
+  const maxAgeDays = Math.min(90, Math.max(1, Number(req.nextUrl.searchParams.get("maxAgeDays") ?? "14")));
+  let rows = [...merged.values()].slice(0, maxRows);
   const ids = rows.map((r) => r.id);
 
   type MetaRow = {
@@ -154,6 +182,10 @@ export async function GET(req: NextRequest) {
     );
   }
   const metaMap = new Map(meta.map((m) => [m.id, m]));
+
+  rows = rows.filter((row) =>
+    listingWithinFreshWindow(metaMap.get(row.id)?.scraped_at ?? null, maxAgeDays)
+  );
 
   const features = rows.map((row) => {
     const m = metaMap.get(row.id);
@@ -196,7 +228,12 @@ export async function GET(req: NextRequest) {
     liveImport: live && waitForScrape,
     refreshStarted,
     scrape: scrapeMeta,
-    total: features.length,
+    total: rows.length,
+    totalInZone: rows.length,
+    maxAgeDays,
+    radiusM: usedRadius,
+    stockTarget: ZONE_STOCK_TARGET,
+    stockSatisfied: merged.size >= ZONE_STOCK_TARGET,
     byPortal,
     features: interleaveByPortal(features, (f) => f.source),
   });

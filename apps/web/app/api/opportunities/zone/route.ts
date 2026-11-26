@@ -4,12 +4,16 @@ import {
   geocodeSpainQuery,
   normalizeSpanishPostalCode,
   reverseGeocodeSpain,
-  ZONE_STOCK_TARGET,
 } from "@/lib/map/geocode-spain";
+import { ZONE_STOCK_TARGET } from "@/lib/map/cp-zone-stock";
+import { ensureCpStockIngest } from "@/lib/scrape/ensure-cp-stock.server";
+import { cpStockBaseRadiusM } from "@/lib/map/cp-priority";
+import { promiseWithTimeout } from "@/lib/ops/promise-timeout";
 import {
-  shouldOffloadCpScrapeToActions,
-  triggerPostalCodeScrapeWorkflow,
-} from "@/lib/scrape/trigger-cp-scrape-workflow.server";
+  countFreshAround,
+  cpExactRadiusM,
+  cpRadiusFromBbox,
+} from "@/lib/map/cp-area-listings.server";
 import { prefetchScanZoneInventory } from "@/lib/scrape/prefetch-scan-zone.server";
 import { portalsForCpLiveImport } from "@/lib/scrape/cp-live-portals";
 import { refreshPostalCodeLive } from "@/lib/scrape/scrape-postal-code.server";
@@ -37,6 +41,13 @@ const bodySchema = z.object({
   waitScrape: z.boolean().optional(),
   chollosOnly: z.boolean().optional(),
   label: z.string().optional(),
+  offset: z.number().optional(),
+  maxAgeDays: z.number().optional(),
+  /** bbox del CP/barrio elegido: ajusta el radio para que el área coincida. */
+  cpBbox: z
+    .tuple([z.number(), z.number(), z.number(), z.number()])
+    .nullable()
+    .optional(),
 });
 
 async function resolveCp(lat: number, lng: number, cpHint?: string): Promise<string> {
@@ -67,53 +78,74 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.message, code: "VALIDATION" }, { status: 400 });
   }
 
-  const { lat, lng, waitScrape, chollosOnly } = parsed.data;
-  const limit = Math.min(200, parsed.data.limit ?? 200);
+  const { lat, lng, waitScrape, chollosOnly } = parsed.data;  const limit = Math.min(400, parsed.data.limit ?? 400);
   const cp = await resolveCp(lat, lng, parsed.data.cp);
-  const radiusM = parsed.data.radiusM ?? 6500;
+  const cpBbox = parsed.data.cpBbox ?? null;
+  const requestedRadius =
+    parsed.data.radiusM ??
+    cpRadiusFromBbox(cp, cpBbox, cpStockBaseRadiusM(cp, 6500));
   const live = parsed.data.live !== false;
+
+  /**
+   * Zona fría: si la última importación de ese CP es antigua (o no hay),
+   * refrescamos antes de responder para no servir inventario envejecido.
+   */
+  let staleRefresh: { ageHours: number | null; refreshed: boolean } | null = null;
+  if (live && parsed.data.cp) {
+    try {
+      const { cpLastScrapeHours, coldZoneHours } = await import(
+        "@/lib/opportunities/cp-freshness.server"
+      );
+      const ageHours = await cpLastScrapeHours(cp);
+      if (ageHours == null || ageHours >= coldZoneHours()) {
+        staleRefresh = { ageHours, refreshed: false };
+      }
+      console.info("cp cold zone", cp, { ageHours, cold: Boolean(staleRefresh) });
+    } catch (e) {
+      console.warn("cp freshness check", cp, e);
+    }
+  }
 
   let scrapeMeta: Awaited<ReturnType<typeof refreshPostalCodeLive>> | null = null;
   let refreshStarted = false;
+  let radiusM = requestedRadius;
 
-  const runBackgroundIngest = (offloadActions = false) => {
+  const runBackgroundIngest = () => {
     refreshStarted = true;
     after(async () => {
       try {
+        await ensureCpStockIngest(cp, { forceScrape: true });
         const portals = portalsForCpLiveImport();
-        await refreshPostalCodeLive(cp, { portals, force: true });
         const polygon = circlePolygon(lng, lat, radiusM / 1000);
         await prefetchScanZoneInventory(polygon, {
           portals: [...portals, "hipoges", "solvia"],
           postalCode: cp,
         });
-        if (
-          offloadActions &&
-          shouldOffloadCpScrapeToActions() &&
-          !(globalThis as { __piCpWorkflow?: Set<string> }).__piCpWorkflow?.has(cp)
-        ) {
-          const g = globalThis as { __piCpWorkflow?: Set<string> };
-          if (!g.__piCpWorkflow) g.__piCpWorkflow = new Set();
-          g.__piCpWorkflow.add(cp);
-          await triggerPostalCodeScrapeWorkflow(cp);
-        }
       } catch (e) {
         console.error("zone opportunity ingest", e);
       }
     });
   };
 
-  if (live && waitScrape) {
+  if (live && (waitScrape || staleRefresh)) {
     try {
-      scrapeMeta = await refreshPostalCodeLive(cp, {
-        portals: portalsForCpLiveImport(),
-        force: true,
-      });
+      const coldMs = Number(process.env.CP_COLD_ZONE_TIMEOUT_MS ?? "60000");
+      const ingested = await promiseWithTimeout(
+        ensureCpStockIngest(cp, { forceScrape: true }),
+        coldMs,
+        "cold_zone_timeout"
+      );
+      scrapeMeta = ingested.scrape ?? null;
+      if (staleRefresh) staleRefresh.refreshed = Boolean(ingested.scrapeStarted);
       const polygon = circlePolygon(lng, lat, radiusM / 1000);
-      await prefetchScanZoneInventory(polygon, {
-        portals: ["fotocasa", "pisos_com", "kelify", "hipoges", "solvia", "habitaclia"],
-        postalCode: cp,
-      });
+      await promiseWithTimeout(
+        prefetchScanZoneInventory(polygon, {
+          portals: ["fotocasa", "pisos_com", "kelify", "hipoges", "solvia", "habitaclia"],
+          postalCode: cp,
+        }),
+        Number(process.env.CP_COLD_ZONE_INGEST_MS ?? "90000"),
+        "cold_zone_ingest"
+      );
     } catch (e) {
       scrapeMeta = { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -121,12 +153,24 @@ export async function POST(req: NextRequest) {
 
   const supabase = await getDbClient();
   try {
+    const maxAgeDays = parsed.data.maxAgeDays ?? 14;
+    /** Si hay bbox de CP, el inventario cercano manda: evita "0 de 180" por índices urbanos. */
+    if (cpBbox) {
+      const around = await countFreshAround(supabase, cp, lat, lng, {
+        radiusM: requestedRadius,
+        freshDays: maxAgeDays,
+      });
+      radiusM = Math.max(requestedRadius, cpExactRadiusM(requestedRadius, around.exact));
+    }
+
     let feed = await loadZoneOpportunityFeed(supabase, {
       lat,
       lng,
       cp,
       radiusM,
       limit,
+      offset: parsed.data.offset ?? 0,
+      maxAgeDays,
       chollosOnly: chollosOnly !== false,
     });
 
@@ -137,13 +181,15 @@ export async function POST(req: NextRequest) {
         cp,
         radiusM: Math.min(12_000, radiusM + 2000),
         limit,
+        offset: parsed.data.offset ?? 0,
+        maxAgeDays,
         chollosOnly: chollosOnly !== false,
       });
     }
 
     const needsDeep = live && !waitScrape;
-  if (needsDeep) {
-      runBackgroundIngest(feed.totalInZone < ZONE_STOCK_TARGET);
+    if (needsDeep) {
+      if (feed.totalInZone < ZONE_STOCK_TARGET) runBackgroundIngest();
     }
 
     return NextResponse.json({
@@ -154,6 +200,7 @@ export async function POST(req: NextRequest) {
       liveImport: Boolean(waitScrape),
       refreshStarted: refreshStarted || needsDeep,
       scrape: scrapeMeta,
+      staleRefresh,
       totalQualified: feed.opportunitiesInZone,
       stockTarget: ZONE_STOCK_TARGET,
       stockSatisfied: feed.totalInZone >= ZONE_STOCK_TARGET,
@@ -187,7 +234,7 @@ export async function GET(req: NextRequest) {
   }
   const cp = p.get("cp") ?? undefined;
   const radiusM = Number(p.get("radiusM") ?? "6500");
-  const limit = Math.min(200, Number(p.get("limit") ?? "200"));
+  const limit = Math.min(400, Number(p.get("limit") ?? "400"));
   const supabase = await getDbClient();
   const feed = await loadZoneOpportunityFeed(supabase, {
     lat,
