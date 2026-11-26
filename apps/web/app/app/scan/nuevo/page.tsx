@@ -265,7 +265,7 @@ function NewScanPageContent() {
     <div className="flex h-full min-h-0 flex-1 overflow-hidden">
       <aside className="flex min-h-0 w-full max-w-[440px] shrink-0 flex-col border-r border-neutral-200 bg-white lg:w-[440px]">
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          <h1 className="text-lg font-semibold text-neutral-950">
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-950">
             Encuentra inmuebles que generan dinero
           </h1>
           <p className="mt-1 text-sm text-neutral-600">
