@@ -120,22 +120,30 @@ export default function InicioPage() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [feedError, setFeedError] = useState(false);
   const [marquee, setMarquee] = useState<HeroDeal[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 90_000);
       try {
-        const [feed, hero] = await Promise.all([
-          fetch("/api/opportunities?limit=200").then((r) => (r.ok ? r.json() : {})),
-          fetch("/api/public/hero-deals").then((r) => (r.ok ? r.json() : { items: [] })),
+        const [feedRes, heroRes] = await Promise.all([
+          fetch("/api/opportunities?limit=200", { signal: controller.signal }).catch(() => null),
+          fetch("/api/public/hero-deals", { signal: controller.signal }).catch(() => null),
         ]);
         if (cancelled) return;
-        const body = feed as FeedResponse;
+        const body = (feedRes && feedRes.ok ? await feedRes.json() : {}) as FeedResponse;
+        const hero = (heroRes && heroRes.ok ? await heroRes.json() : { items: [] }) as { items?: HeroDeal[] };
         setItems(body.items ?? []);
-        setTotal(body.totalQualified ?? (body.items?.length ?? 0));
-        setMarquee((hero as { items?: HeroDeal[] }).items ?? []);
+        setTotal(body.totalQualified ?? body.items?.length ?? 0);
+        setMarquee(hero.items ?? []);
+        if (!feedRes || !feedRes.ok) setFeedError(true);
+      } catch {
+        if (!cancelled) setFeedError(true);
       } finally {
+        window.clearTimeout(timeout);
         if (!cancelled) setLoading(false);
       }
     })();
@@ -279,9 +287,13 @@ export default function InicioPage() {
 
           {!loading && items.length === 0 && (
             <AppEmptyState
-              title="Aún sin inventario fresco"
-              description="Estamos importando anuncios. En unos minutos aparecerán aquí los chollos reales de bancos y agencias."
-              action={<AppPillButton href="/app/explorar">Explorar por zona</AppPillButton>}
+              title={feedError ? "No hemos podido cargar el catálogo" : "Aún sin inventario fresco"}
+              description={
+                feedError
+                  ? "Vuelve a intentarlo en unos segundos o abre el feed completo de Oportunidades."
+                  : "Estamos importando anuncios. En unos minutos aparecerán aquí los chollos reales de bancos y agencias."
+              }
+              action={<AppPillButton href="/app/oportunidades">Abrir Oportunidades</AppPillButton>}
             />
           )}
 
