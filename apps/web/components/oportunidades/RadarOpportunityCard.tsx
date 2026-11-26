@@ -7,6 +7,7 @@ import { resolveListingSqm } from "@/lib/listing/resolve-sqm";
 import { portalBadge } from "@/lib/portals";
 import { SELLER_KIND_LABEL } from "@/lib/listing/seller-kind";
 import { listingDetailHref } from "@/lib/listing/return-navigation";
+import { listingOrigin, LISTING_ORIGIN_LABEL, LISTING_ORIGIN_CLASS } from "@/lib/listing/listing-origin";
 import { valuationDiscountCopy } from "@/lib/listing/valuation-copy";
 import { SaveListingButton } from "@/components/listings/SaveListingButton";
 import { grossRoiForDisplay } from "@/lib/listing/display-roi";
@@ -95,6 +96,7 @@ export function RadarOpportunityCard({
   const isNew = opportunity.scrapedAgeDays != null && opportunity.scrapedAgeDays <= 7;
   const isRecent = !isNew && opportunity.scrapedAgeDays != null && opportunity.scrapedAgeDays <= 21;
   const ageLabel = formatScrapedAgeEs(opportunity.scrapedAgeDays);
+  const origin = listingOrigin(scrapedAt);
   const valuationLine = valuationDiscountCopy(
     opportunity.discountPct,
     opportunity.valuationConfidence
@@ -198,10 +200,17 @@ export function RadarOpportunityCard({
           {cleanTitle}
         </Link>
         {(city || ageLabel) && (
-          <p className="mt-1 truncate text-xs text-neutral-500">
-            {[city ? decodeListingTitle(city) : null, ageLabel ? ageLabel.replace(/^·\s*/, "") : null]
-              .filter(Boolean)
-              .join(" · ")}
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 truncate text-xs text-neutral-500">
+            <span className="truncate">
+              {[city ? decodeListingTitle(city) : null, ageLabel ? ageLabel.replace(/^·\s*/, "") : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+            <span
+              className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${LISTING_ORIGIN_CLASS[origin]}`}
+            >
+              {LISTING_ORIGIN_LABEL[origin]}
+            </span>
           </p>
         )}
         {specParts.length > 0 && (

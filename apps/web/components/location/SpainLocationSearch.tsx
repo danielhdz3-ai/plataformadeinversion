@@ -22,8 +22,25 @@ export function SpainLocationSearch({
 }: Props) {
   const { suggestions, loading, error, isCompleteCp } = useSpainGeocodeSuggestions(value);
 
-  function tryPickFirst() {
-    if (suggestions[0]) onPick(suggestions[0]);
+  /** Enter resuelve directo si aún no había sugerencias (CP recién escrito, red lenta…). */
+  async function resolveAndPick() {
+    if (suggestions[0]) {
+      onPick(suggestions[0]);
+      return;
+    }
+    const q = value.trim();
+    if (q.length < 2) return;
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, {
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { results?: GeocodeHit[] };
+      const hit = data.results?.[0];
+      if (hit) onPick(hit);
+    } catch {
+      /* sin sugerencias */
+    }
   }
 
   return (
@@ -34,7 +51,7 @@ export function SpainLocationSearch({
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            tryPickFirst();
+            void resolveAndPick();
           }
           if (e.key === "Escape") onChange(value.trim());
         }}

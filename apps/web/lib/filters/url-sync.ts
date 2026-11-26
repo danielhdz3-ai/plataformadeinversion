@@ -39,6 +39,26 @@ export function opportunityCpToParams(cp: string | null): URLSearchParams {
   return p;
 }
 
+export function explorarHrefFromFilters(
+  filters: ScanRunFilters,
+  opts?: { cp?: string | null }
+): string {
+  const p = filtersToUrlSearchParams(filters);
+  if (opts?.cp?.length === 5) p.set("cp", opts.cp);
+  const q = p.toString();
+  return q ? `/app/explorar?${q}` : "/app/explorar";
+}
+
+export function oportunidadesHrefFromFilters(
+  filters: ScanRunFilters,
+  opts?: { cp?: string | null }
+): string {
+  const p = filtersToUrlSearchParams(filters);
+  if (opts?.cp?.length === 5) p.set("cp", opts.cp);
+  const q = p.toString();
+  return q ? `/app/oportunidades?${q}` : "/app/oportunidades";
+}
+
 /** Wizard scan con filtros actuales de Oportunidades (alerta / zona). */
 export function scanNuevoHrefFromFilters(
   filters: ScanRunFilters,

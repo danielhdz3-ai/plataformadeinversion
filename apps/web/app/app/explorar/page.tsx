@@ -9,19 +9,25 @@ import { pinFallbackListing } from "@/lib/listing/resolve-side-panel-listing";
 import { useListingSummaries } from "@/lib/listing/use-listing-summaries";
 import { RoiScanMap } from "@/components/map/RoiScanMapLazy";
 import type { MapFeatureCollection } from "@/lib/map/geojson-types";
+import { EXPLORAR_MIN_ZOOM_FOR_BBOX, ZONE_STOCK_TARGET } from "@/lib/map/cp-zone-stock";
 import { SPAIN_VIEW } from "@/lib/map/spain-bounds";
 import { decodeListingTitle } from "@/lib/decode-html";
 import { ListingFiltersPanel, type ListingSort } from "@/components/filters/ListingFiltersPanel";
 import { SpainLocationSearch } from "@/components/location/SpainLocationSearch";
 import { AppPanelHeader } from "@/components/app/AppPanelHeader";
-import type { GeocodeHit } from "@/lib/map/geocode-spain";
+import { cpFromGeocodeLabel, type GeocodeHit } from "@/lib/map/geocode-spain";
+import { radiusFromBbox } from "@/lib/map/cp-zone-stock";
 import { applyListingViewPipeline } from "@/lib/listing/apply-opportunity-view";
 import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
 import { defaultListingFilters } from "@/lib/scan/listing-filter-defaults";
 import { mapListingFiltersToSearchParams } from "@/lib/map/map-listing-filters";
 import Link from "next/link";
 import { portalBadge } from "@/lib/portals";
-import { filtersToUrlSearchParams, mergeUrlFiltersInto } from "@/lib/filters/url-sync";
+import {
+  filtersToUrlSearchParams,
+  mergeUrlFiltersInto,
+  oportunidadesHrefFromFilters,
+} from "@/lib/filters/url-sync";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -77,6 +83,8 @@ function ExplorarPageContent() {
   const cpLoadSeq = useRef(0);
   const mapLoadSeq = useRef(0);
   const filtersUrlReady = useRef(false);
+  const [activeCp, setActiveCp] = useState<string | null>(null);
+  const activeCpRef = useRef<string | null>(null);
 
   useEffect(() => {
     let base = defaultListingFilters();
@@ -116,9 +124,10 @@ function ExplorarPageContent() {
     if (viewMode !== "list") fp.set("view", viewMode);
     const listing = searchParams.get("listing");
     if (listing) fp.set("listing", listing);
+    if (activeCp) fp.set("cp", activeCp);
     const qs = fp.toString();
     router.replace(qs ? `/app/explorar?${qs}` : "/app/explorar", { scroll: false });
-  }, [filters, sort, viewMode, router, searchParams]);
+  }, [filters, sort, viewMode, activeCp, router, searchParams]);
 
   useEffect(() => {
     const lid = searchParams.get("listing");
@@ -169,14 +178,18 @@ function ExplorarPageContent() {
     const cp = (cpOverride ?? cpQuery).replace(/\D/g, "").slice(0, 5);
     if (cp.length !== 5) return;
     const seq = ++cpLoadSeq.current;
+    setActiveCp(cp);
+    activeCpRef.current = cp;
     setCpLoading(true);
     setCpSummary(null);
     try {
       const applyPayload = (data: {
         features?: ListingPin[];
         total?: number;
+        totalInZone?: number;
         byPortal?: Record<string, number>;
         center?: { lat: number; lng: number };
+        stockSatisfied?: boolean;
       }) => {
         if (seq !== cpLoadSeq.current) return;
         const feats = data.features ?? [];
@@ -190,8 +203,13 @@ function ExplorarPageContent() {
               .map(([p, n]) => `${p} ${n}`)
               .join(" · ")
           : "";
+        const n = data.totalInZone ?? data.total ?? feats.length;
+        const stockNote =
+          data.stockSatisfied === false
+            ? ` · objetivo ${ZONE_STOCK_TARGET} (importando…)`
+            : " · zona lista";
         setCpSummary(
-          `${data.total ?? feats.length} ventas CP ${cp}${parts ? ` · ${parts}` : ""}`
+          `${n} ventas CP ${cp}${stockNote}${parts ? ` · ${parts}` : ""}`
         );
       };
 
@@ -204,6 +222,8 @@ function ExplorarPageContent() {
         center?: { lat: number; lng: number };
         error?: string;
         refreshStarted?: boolean;
+        totalInZone?: number;
+        stockSatisfied?: boolean;
       };
       if (!kick.ok) {
         if (seq === cpLoadSeq.current) setCpSummary(kickData.error ?? "Error al cargar CP");
@@ -211,22 +231,19 @@ function ExplorarPageContent() {
       }
       applyPayload(kickData);
 
-      if (kickData.refreshStarted) {
-        let lastTotal = kickData.total ?? 0;
-        for (let i = 0; i < 24; i++) {
+      if (kickData.refreshStarted || kickData.stockSatisfied === false) {
+        let lastTotal = kickData.totalInZone ?? kickData.total ?? 0;
+        for (let i = 0; i < 28; i++) {
           if (seq !== cpLoadSeq.current) break;
-          await new Promise((r) => setTimeout(r, 15_000));
-          setCpSummary(`Importando portales… (${(i + 1) * 15}s)`);
+          await new Promise((r) => setTimeout(r, 10_000));
+          setCpSummary(`Importando portales… (${(i + 1) * 10}s) · ${lastTotal}/${ZONE_STOCK_TARGET}`);
           const poll = await fetch(`/api/map/listings-by-cp?cp=${cp}&max=800&live=0`);
           const pollData = (await poll.json()) as typeof kickData;
           if (!poll.ok) continue;
           applyPayload(pollData);
-          const t = pollData.total ?? 0;
-          if (t > lastTotal + 5) lastTotal = t;
-          if (i >= 3 && t >= 40) break;
-        }
-        if (seq === cpLoadSeq.current) {
-          setCpSummary(`${lastTotal}+ ventas CP ${cp} · importación en curso en servidor`);
+          const t = pollData.totalInZone ?? pollData.total ?? 0;
+          if (t > lastTotal) lastTotal = t;
+          if (pollData.stockSatisfied || t >= ZONE_STOCK_TARGET) break;
         }
       }
     } catch (e) {
@@ -239,20 +256,112 @@ function ExplorarPageContent() {
     }
   }, [cpQuery]);
 
+  useEffect(() => {
+    const cp = searchParams.get("cp")?.replace(/\D/g, "").slice(0, 5);
+    if (cp?.length === 5 && cp !== activeCpRef.current) {
+      setCpQuery(cp);
+      void loadByPostalCode(cp);
+    }
+  }, [searchParams, loadByPostalCode]);
+
+  /**
+   * Barrio o municipio: mismo feed de zona que Oportunidades, pero como pins del mapa.
+   * Antes solo se volaba y no se cargaba inventario del área.
+   */
+  const loadByArea = useCallback(
+    async (hit: GeocodeHit, cp: string | null) => {
+      const seq = ++cpLoadSeq.current;
+      activeCpRef.current = null;
+      setActiveCp(null);
+      setCpLoading(true);
+      setCpSummary("Cargando zona…");
+      const radiusM = radiusFromBbox(hit.bbox, 6500);
+      try {
+        const body = {
+          lat: hit.lat,
+          lng: hit.lng,
+          cp: cp ?? undefined,
+          cpBbox: hit.bbox,
+          radiusM,
+          limit: 400,
+          live: true,
+          chollosOnly: false,
+          label: hit.label,
+        };
+        const r = await fetch("/api/opportunities/zone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = (await r.json()) as {
+          items?: {
+            id: string;
+            lat: number | null;
+            lng: number | null;
+            price: number;
+            roi: number | null;
+            title: string | null;
+          }[];
+          totalInZone?: number;
+          opportunitiesInZone?: number;
+          radiusM?: number;
+          error?: string;
+        };
+        if (seq !== cpLoadSeq.current) return;
+        if (!r.ok) {
+          setCpSummary(data.error ?? "No se pudo cargar la zona");
+          return;
+        }
+        const features: ListingPin[] = (data.items ?? [])
+          .filter((it) => it.lat != null && it.lng != null)
+          .map((it) => ({
+            id: it.id,
+            lng: it.lng as number,
+            lat: it.lat as number,
+            price: it.price,
+            roi: it.roi,
+            source: "area",
+            title: it.title ?? null,
+            sourceUrl: null,
+          }));
+        setListings(features);
+        const km = Math.round((data.radiusM ?? radiusM) / 1000);
+        setCpSummary(
+          `${data.totalInZone ?? features.length} anuncios · ${km} km a la redonda · ${
+            data.opportunitiesInZone ?? 0
+          } oportunidades`
+        );
+        setFlyTo({ center: [hit.lng, hit.lat], zoom: hit.bbox ? 13 : 14 });
+      } catch {
+        if (seq === cpLoadSeq.current) setCpSummary("Error de red al cargar la zona");
+      } finally {
+        if (seq === cpLoadSeq.current) setCpLoading(false);
+      }
+    },
+    []
+  );
+
   const onLocationPick = useCallback(
     (hit: GeocodeHit) => {
-      const cp = hit.label.match(/\b(\d{5})\b/)?.[1] ?? null;
+      const cp = cpFromGeocodeLabel(hit.label);
+      setLocationQuery(hit.label);
       if (cp) {
         setCpQuery(cp);
-        setLocationQuery(hit.label);
         void loadByPostalCode(cp);
         return;
       }
-      setLocationQuery(hit.label.split(",")[0] ?? hit.label);
-      setFlyTo({ center: [hit.lng, hit.lat], zoom: hit.bbox ? 13 : 14 });
+      setCpQuery("");
+      activeCpRef.current = null;
+      setActiveCp(null);
+      void loadByArea(hit, null);
     },
-    [loadByPostalCode]
+    [loadByPostalCode, loadByArea]
   );
+
+  /** El buscador es controlado: al escribir se limpia el resultado anterior. */
+  const onLocationQueryChange = useCallback((q: string) => {
+    setLocationQuery(q);
+  }, []);
 
   const loadMap = useCallback(
     async (bbox: [number, number, number, number], meta?: { zoom: number }) => {
@@ -260,11 +369,16 @@ function ExplorarPageContent() {
       const zoom = meta?.zoom ?? lastZoomRef.current;
       if (meta?.zoom != null) lastZoomRef.current = meta.zoom;
       const seq = ++mapLoadSeq.current;
+      if (!activeCpRef.current && zoom < EXPLORAR_MIN_ZOOM_FOR_BBOX) {
+        if (seq === mapLoadSeq.current) setListings([]);
+        return;
+      }
       const [minLng, minLat, maxLng, maxLat] = bbox;
       const zoomQ = meta?.zoom != null ? `&zoom=${meta.zoom}` : "";
+      const cpQ = activeCpRef.current ? `&cp=${activeCpRef.current}` : "";
       const filterQ = mapListingFiltersToSearchParams(filters);
       const res = await fetch(
-        `/api/map/listings?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}${zoomQ}${filterQ}`
+        `/api/map/listings?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}${zoomQ}${cpQ}${filterQ}`
       );
       if (seq !== mapLoadSeq.current) return;
       if (res.ok) {
@@ -390,24 +504,34 @@ function ExplorarPageContent() {
           title="Explorar mercado"
           subtitle={
             listings.length === 0
-              ? "Acerca el mapa a una ciudad con cobertura"
+              ? "Importa un CP (5 dígitos) o acerca el mapa (zoom 11+) — sin catálogo nacional"
               : filteredListings.length === listings.length
                 ? `${listings.length} ventas${portalSummary ? ` · ${portalSummary}` : ""}`
                 : `${filteredListings.length} de ${listings.length} ventas${portalSummary ? ` · ${portalSummary}` : ""}`
           }
           action={
-            <Link
-              href="/app/scan/nuevo"
-              className="inline-block rounded bg-neutral-950 px-3 py-1.5 text-xs font-medium text-white"
-            >
-              Nuevo scan ROI
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              {activeCp && (
+                <Link
+                  href={oportunidadesHrefFromFilters(filters, { cp: activeCp })}
+                  className="inline-block rounded border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-950 hover:bg-orange-100"
+                >
+                  Oportunidades · CP {activeCp}
+                </Link>
+              )}
+              <Link
+                href="/app/scan/nuevo"
+                className="inline-block rounded bg-neutral-950 px-3 py-1.5 text-xs font-medium text-white"
+              >
+                Nuevo scan ROI
+              </Link>
+            </div>
           }
         />
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
           <SpainLocationSearch
             value={locationQuery}
-            onChange={setLocationQuery}
+            onChange={onLocationQueryChange}
             onPick={onLocationPick}
             placeholder="CP, barrio o municipio"
           />
@@ -519,17 +643,26 @@ function ExplorarPageContent() {
           )}
           {listings.length === 0 && (
             <div className="rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-600">
-              <p>
-                Acerca el mapa a una ciudad con cobertura (leyenda abajo) o desplázate por España. Si no hay
-                pins, estamos ampliando scrape en esa zona.
+              <p className="font-medium text-neutral-900">Empieza por una zona</p>
+              <p className="mt-2 leading-relaxed">
+                Escribe un código postal arriba (cualquier CP de España). También puedes acercar el mapa en una
+                ciudad (zoom {Math.ceil(EXPLORAR_MIN_ZOOM_FOR_BBOX)}+).
               </p>
+              {activeCp && (
+                <Link
+                  href={oportunidadesHrefFromFilters(filters, { cp: activeCp })}
+                  className="mt-3 inline-block text-xs font-semibold text-orange-700 underline"
+                >
+                  Ver oportunidades en CP {activeCp} →
+                </Link>
+              )}
               <button
                 type="button"
                 disabled={requestSent}
                 onClick={() => void requestCoverage()}
-                className="mt-3 rounded-lg border border-neutral-950 bg-neutral-950 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                className="mt-3 block rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 disabled:opacity-50"
               >
-                {requestSent ? "Solicitud enviada" : "Solicitar datos en esta zona"}
+                {requestSent ? "Solicitud enviada" : "Solicitar cobertura en el mapa actual"}
               </button>
             </div>
           )}

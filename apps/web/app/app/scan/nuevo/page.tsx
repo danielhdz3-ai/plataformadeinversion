@@ -33,6 +33,11 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 type Pin = { id: string; lng: number; lat: number; roi: number | null; price: number };
 type GeocodeHit = { label: string; lat: number; lng: number; bbox: [number, number, number, number] | null };
 
+function cpFromGeocodeLabel(label: string | null | undefined): string | null {
+  if (!label) return null;
+  return /CP\s*(\d{5})/i.exec(label)?.[1] ?? null;
+}
+
 type FilterMode = "entry_budget" | "price_range";
 
 export default function NewScanPage() {
@@ -194,7 +199,7 @@ function NewScanPageContent() {
   }, [radiusKm]);
 
   function pickPlace(hit: GeocodeHit) {
-    const cp = hit.label.match(/\b(\d{5})\b/)?.[1];
+    const cp = cpFromGeocodeLabel(hit.label);
     setQuery(cp ?? hit.label.split(",")[0] ?? hit.label);
     setSelectedPinId(null);
     applyScanCenter(hit.lng, hit.lat, hit.label);
@@ -211,51 +216,49 @@ function NewScanPageContent() {
 
   async function startScan() {
     setLoading(true);
-    const zone = polygon ?? DEMO_POLYGON;
-    const res = await fetch("/api/scans", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        polygon: zone,
-        operation,
-        filters: {
-          priceMin: effectivePriceMin,
-          priceMax: effectivePriceMax,
-          bedroomsMin,
-          allowedBedrooms: bedroomFilter.allowedBedrooms,
-          bedroomsMinPlus: bedroomFilter.bedroomsMinPlus,
-          allowedBathrooms: bathroomFilter.allowedBathrooms,
-          bathroomsMinPlus: bathroomFilter.bathroomsMinPlus,
-          sqmMin,
-          sqmMax,
-          sourcePortals: selectedPortals(portalToggles),
-          minRoiGross: usesRoi ? minRoiGross : undefined,
-          onlyWithRoi: usesRoi ? onlyWithRoi : false,
-          rooms,
-          bathrooms,
-          filterMode,
-          leverage,
-          notifyEmail,
-          finance,
-          radiusKm,
-          center,
-        },
-      }),
-    });
-    const body = (await res.json()) as { scanId?: string; error?: string };
-    if (!res.ok || !body.scanId) {
+    try {
+      const zone = polygon ?? DEMO_POLYGON;
+      const res = await fetch("/api/scans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          polygon: zone,
+          operation,
+          filters: {
+            priceMin: effectivePriceMin,
+            priceMax: effectivePriceMax,
+            bedroomsMin,
+            allowedBedrooms: bedroomFilter.allowedBedrooms,
+            bedroomsMinPlus: bedroomFilter.bedroomsMinPlus,
+            allowedBathrooms: bathroomFilter.allowedBathrooms,
+            bathroomsMinPlus: bathroomFilter.bathroomsMinPlus,
+            sqmMin,
+            sqmMax,
+            sourcePortals: selectedPortals(portalToggles),
+            minRoiGross: usesRoi ? minRoiGross : undefined,
+            onlyWithRoi: usesRoi ? onlyWithRoi : false,
+            rooms,
+            bathrooms,
+            filterMode,
+            leverage,
+            notifyEmail,
+            finance,
+            radiusKm,
+            center,
+          },
+        }),
+      });
+      const body = (await res.json()) as { scanId?: string; error?: string };
+      if (!res.ok || !body.scanId) {
+        alert(body.error ?? "Error al crear scan");
+        return;
+      }
+      router.push(`/app/scan/${body.scanId}`);
+    } catch {
+      alert("Error de red al crear el scan");
+    } finally {
       setLoading(false);
-      alert(body.error ?? "Error al crear scan");
-      return;
     }
-    const runRes = await fetch(`/api/scans/${body.scanId}/run`, { method: "POST" });
-    setLoading(false);
-    if (!runRes.ok && runRes.status !== 202) {
-      const runBody = (await runRes.json().catch(() => ({}))) as { error?: string };
-      alert(runBody.error ?? "El scan no pudo ejecutarse. Revisa la zona e inténtalo de nuevo.");
-      return;
-    }
-    router.push(`/app/scan/${body.scanId}`);
   }
 
   return (

@@ -12,6 +12,7 @@ import { useListingSummaries } from "@/lib/listing/use-listing-summaries";
 import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
 import { defaultListingFilters } from "@/lib/scan/listing-filter-defaults";
 import { portalBadge } from "@/lib/portals";
+import { ZoneWatchesPanel } from "@/components/zone/ZoneWatchesPanel";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -92,6 +93,8 @@ export default function GuardadosPage() {
       <p className="mt-1 text-sm text-neutral-600">
         Oportunidades que marcaste — filtra como en Explorar y Scan.
       </p>
+
+      <ZoneWatchesPanel />
 
       {needsAuth && (
         <p className="mt-6 rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700">

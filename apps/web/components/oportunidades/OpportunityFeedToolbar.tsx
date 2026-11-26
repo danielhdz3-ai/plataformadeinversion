@@ -1,12 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { SpainLocationSearch } from "@/components/location/SpainLocationSearch";
 import type { GeocodeHit } from "@/lib/map/geocode-spain";
 import type { ListingSort } from "@/components/filters/ListingFiltersPanel";
 import type { ScanRunFilters } from "@/lib/scan/bedroom-filter";
-import { scanNuevoHrefFromFilters } from "@/lib/filters/url-sync";
+import { explorarHrefFromFilters, scanNuevoHrefFromFilters } from "@/lib/filters/url-sync";
+import { saveZoneWatch } from "@/lib/zone/zone-watches.client";
 import { ALL_SELLER_KINDS } from "@/lib/listing/filter-opportunity";
 import { SELLER_KIND_LABEL, type SellerKind } from "@/lib/listing/seller-kind";
 
@@ -32,6 +34,8 @@ type Props = {
   advancedOpen: boolean;
   onAdvancedOpenChange: (open: boolean) => void;
   onReset: () => void;
+  zoneLabel?: string | null;
+  zoneCpNote?: string | null;
 };
 
 function SelectPill({
@@ -79,7 +83,10 @@ export function OpportunityFeedToolbar({
   advancedOpen,
   onAdvancedOpenChange,
   onReset,
+  zoneLabel,
+  zoneCpNote,
 }: Props) {
+  const [watchSaved, setWatchSaved] = useState(false);
   const discountVal =
     filters.minDiscountPct == null || filters.minDiscountPct === 0
       ? "any"
@@ -282,6 +289,11 @@ export function OpportunityFeedToolbar({
             )}{" "}
             oportunidades
           </span>
+          {zoneCpNote && (
+            <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-medium text-neutral-700">
+              {zoneCpNote}
+            </span>
+          )}
           {zoneImporting && (
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-medium text-amber-950">
               Importando portales en la zona…
@@ -299,6 +311,31 @@ export function OpportunityFeedToolbar({
           <button type="button" onClick={onReset} className="text-neutral-500 underline hover:text-neutral-800">
             Limpiar filtros
           </button>
+          {activeCp && (
+            <Link
+              href={explorarHrefFromFilters(filters, { cp: activeCp })}
+              className="rounded-full border border-neutral-200 bg-white px-3 py-1 font-medium text-neutral-800 hover:bg-neutral-50"
+            >
+              Mapa explorar
+            </Link>
+          )}
+          {activeCp && (
+            <button
+              type="button"
+              onClick={() => {
+                saveZoneWatch({
+                  postalCode: activeCp,
+                  label: zoneLabel,
+                  filters,
+                });
+                setWatchSaved(true);
+                window.setTimeout(() => setWatchSaved(false), 2500);
+              }}
+              className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 font-medium text-violet-950 hover:bg-violet-100"
+            >
+              {watchSaved ? "Zona guardada" : "Guardar zona"}
+            </button>
+          )}
           <Link
             href={scanNuevoHrefFromFilters(filters, { cp: activeCp, notifyEmail: true })}
             className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 font-medium text-orange-950 hover:bg-orange-100"

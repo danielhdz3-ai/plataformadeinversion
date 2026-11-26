@@ -69,6 +69,7 @@ function ScanResultsPageContent() {
   const [viewFiltersOpen, setViewFiltersOpen] = useState(true);
   const viewFiltersUrlReady = useRef(false);
   const hadUrlRefine = useRef(false);
+  const runKickRef = useRef(false);
   const [mapFallback, setMapFallback] = useState(false);
   const [flyTo, setFlyTo] = useState<{ center: [number, number]; zoom: number } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -104,6 +105,23 @@ function ScanResultsPageContent() {
     const qs = fp.toString();
     router.replace(qs ? `/app/scan/${id}?${qs}` : `/app/scan/${id}`, { scroll: false });
   }, [viewFilters, sort, id, router, searchParams]);
+
+  useEffect(() => {
+    runKickRef.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || runKickRef.current) return;
+    runKickRef.current = true;
+    void (async () => {
+      const s = await fetch(`/api/scans/${id}`);
+      if (!s.ok) return;
+      const scan = (await s.json()) as { status?: string };
+      if (scan.status === "pending") {
+        await fetch(`/api/scans/${id}/run`, { method: "POST" });
+      }
+    })();
+  }, [id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -321,6 +339,15 @@ function ScanResultsPageContent() {
   const running = status !== "completed" && status !== "failed";
   const progressStep =
     status === "pending" ? 0 : status === "running" ? 1 : status === "ranking" ? 2 : 2;
+  const [runStale, setRunStale] = useState(false);
+  useEffect(() => {
+    if (!running) {
+      setRunStale(false);
+      return;
+    }
+    const t = window.setTimeout(() => setRunStale(true), 90_000);
+    return () => window.clearTimeout(t);
+  }, [running, id]);
 
   function exportJson() {
     const blob = new Blob([JSON.stringify({ scanId: id, results: sortedRows, pins }, null, 2)], {
@@ -522,7 +549,25 @@ function ScanResultsPageContent() {
           </div>
         </aside>
         <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-neutral-100">
-          {running && rows.length === 0 && <ScanProgressOverlay activeStep={progressStep} />}
+          {running && rows.length === 0 && (
+            <>
+              <ScanProgressOverlay activeStep={progressStep} />
+              {runStale && (
+                <div className="absolute bottom-6 left-1/2 z-40 w-[min(92%,360px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-950 shadow">
+                  <p>Tarda más de lo habitual. Puedes esperar o relanzar la importación.</p>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg bg-neutral-950 px-4 py-2 text-xs font-semibold text-white"
+                    onClick={() =>
+                      void fetch(`/api/scans/${id}/run?force=1`, { method: "POST" })
+                    }
+                  >
+                    Reintentar scan
+                  </button>
+                </div>
+              )}
+            </>
+          )}
           <RoiScanMap
             key={id}
             pins={roiPins}

@@ -12,7 +12,8 @@ import { RadarOpportunityCard } from "@/components/oportunidades/RadarOpportunit
 import { RadarOpportunityListRow } from "@/components/oportunidades/RadarOpportunityListRow";
 import { RoiScanMap } from "@/components/map/RoiScanMapLazy";
 import type { GeocodeHit } from "@/lib/map/geocode-spain";
-import { ZONE_STOCK_TARGET } from "@/lib/map/geocode-spain";
+import { radiusFromBbox, ZONE_STOCK_TARGET } from "@/lib/map/cp-zone-stock";
+import { cpFromGeocodeLabel } from "@/lib/map/geocode-spain";
 import { applyListingViewPipeline } from "@/lib/listing/apply-opportunity-view";
 import type { ListingSummary } from "@/lib/listing/summary-types";
 import { defaultListingFilters } from "@/lib/scan/listing-filter-defaults";
@@ -52,14 +53,11 @@ type ZoneContext = {
   cp: string | null;
   radiusM: number;
   label: string;
+  bbox?: [number, number, number, number] | null;
 };
 
 function radiusFromGeocodeHit(hit: GeocodeHit): number {
-  if (!hit.bbox) return 6500;
-  const [minLng, minLat, maxLng, maxLat] = hit.bbox;
-  const dLat = Math.abs(maxLat - minLat) * 111_000;
-  const dLng = Math.abs(maxLng - minLng) * 85_000;
-  return Math.min(12_000, Math.max(4500, Math.max(dLat, dLng) * 0.55 + 2500));
+  return radiusFromBbox(hit.bbox, 6500);
 }
 
 /** Feed ya viene pre-calificado por API; filtros UI parten abiertos. */
@@ -69,7 +67,7 @@ function defaultOportunidadFilters(): ScanRunFilters {
     minDiscountPct: 0,
     minOpportunityScore: 0,
     minRoiGross: 0,
-    maxScrapedAgeDays: null,
+    maxScrapedAgeDays: 14,
     onlyWithRoi: false,
     priceMax: 2_000_000,
   };
@@ -90,7 +88,16 @@ function OportunidadesPageContent() {
   const [zoneImporting, setZoneImporting] = useState(false);
   const [totalInZone, setTotalInZone] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const zoneNextOffsetRef = useRef(0);
+  const itemsLenRef = useRef(0);
+  const [zoneHasMore, setZoneHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const ZONE_PAGE = 80;
   const [filters, setFilters] = useState<ScanRunFilters>(() => defaultOportunidadFilters());
+
+  useEffect(() => {
+    itemsLenRef.current = items.length;
+  }, [items.length]);
   const [sort, setSort] = useState<ListingSort>("score_desc");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -129,6 +136,7 @@ function OportunidadesPageContent() {
             cp,
             radiusM: radiusFromGeocodeHit(hit),
             label: hit.label,
+            bbox: hit.bbox,
           });
         })
         .catch(() => undefined);
@@ -180,11 +188,23 @@ function OportunidadesPageContent() {
   }, []);
 
   const loadZoneFeed = useCallback(
-    async (z: ZoneContext, opts?: { live?: boolean; waitScrape?: boolean; silent?: boolean }) => {
-      if (!opts?.silent) {
+    async (
+      z: ZoneContext,
+      opts?: { live?: boolean; waitScrape?: boolean; silent?: boolean; append?: boolean }
+    ) => {
+      const append = opts?.append === true;
+      if (append) setLoadingMore(true);
+      else if (!opts?.silent) {
         setLoading(true);
         setLoadError(null);
+        zoneNextOffsetRef.current = 0;
+        setZoneHasMore(false);
       }
+      const maxAgeDays = filters.maxScrapedAgeDays ?? 14;
+      const offset = append ? zoneNextOffsetRef.current : 0;
+      const limit = opts?.silent
+        ? Math.min(400, Math.max(ZONE_PAGE, itemsLenRef.current || ZONE_PAGE))
+        : ZONE_PAGE;
       try {
         const res = await fetch("/api/opportunities/zone", {
           method: "POST",
@@ -194,11 +214,14 @@ function OportunidadesPageContent() {
             lng: z.lng,
             cp: z.cp ?? undefined,
             radiusM: z.radiusM,
-            limit: 200,
+            limit,
+            offset,
+            maxAgeDays,
             live: opts?.live !== false,
             waitScrape: opts?.waitScrape === true,
             chollosOnly: false,
             label: z.label,
+            cpBbox: z.bbox ?? null,
           }),
         });
         const body = (await res.json()) as {
@@ -208,30 +231,58 @@ function OportunidadesPageContent() {
           totalInZone?: number;
           refreshStarted?: boolean;
           stockSatisfied?: boolean;
+          hasMore?: boolean;
+          nextOffset?: number;
+          radiusM?: number;
+          cp?: string | null;
+          staleRefresh?: { ageHours: number | null; refreshed: boolean } | null;
           error?: string;
         };
         if (!res.ok) {
           setLoadError(body.error ?? "No se pudo cargar la zona");
-          if (!opts?.silent) setItems([]);
+          if (!opts?.silent && !append) setItems([]);
           return;
         }
-        setItems(body.items ?? []);
+        if (append) {
+          setItems((prev) => {
+            const seen = new Set(prev.map((p) => p.id));
+            const next = [...prev];
+            for (const it of body.items ?? []) {
+              if (!seen.has(it.id)) next.push(it);
+            }
+            return next;
+          });
+        } else {
+          setItems(body.items ?? []);
+        }
+        zoneNextOffsetRef.current =
+          body.nextOffset ?? offset + (body.items?.length ?? 0);
+        setZoneHasMore(body.hasMore === true);
         setTotalQualified(body.opportunitiesInZone ?? body.totalQualified ?? 0);
         setTotalInZone(body.totalInZone ?? null);
+        /** La API puede ajustar el radio (exactitud del CP): reflejarlo en la zona activa. */
+        if (body.radiusM && body.radiusM !== z.radiusM) {
+          setZone((prev) => (prev ? { ...prev, radiusM: body.radiusM! } : prev));
+        }
         setFeedSource("zone");
+        /** Zona fría: la API refrescó antes de responder. */
+        if (body.staleRefresh?.refreshed) {
+          setZoneImporting(false);
+        }
         const inZone = body.totalInZone ?? 0;
         const satisfied = body.stockSatisfied === true || inZone >= ZONE_STOCK_TARGET;
         setZoneImporting(Boolean(body.refreshStarted) || !satisfied);
       } catch {
-        if (!opts?.silent) {
+        if (!opts?.silent && !append) {
           setLoadError("Error de red al cargar la zona");
           setItems([]);
         }
       } finally {
-        if (!opts?.silent) setLoading(false);
+        if (append) setLoadingMore(false);
+        else if (!opts?.silent) setLoading(false);
       }
     },
-    []
+    [filters.maxScrapedAgeDays]
   );
 
   useEffect(() => {
@@ -243,7 +294,7 @@ function OportunidadesPageContent() {
       setFeedSource(null);
       setTotalQualified(0);
     }
-  }, [zone, activeCp, loadFeed, loadZoneFeed]);
+  }, [zone, activeCp, loadFeed, loadZoneFeed, filters.maxScrapedAgeDays]);
 
   useEffect(() => {
     if (zone || !activeCp) return;
@@ -324,7 +375,7 @@ function OportunidadesPageContent() {
 
   const onLocationPick = useCallback((hit: GeocodeHit) => {
     setLocationQuery(hit.label);
-    const cp = hit.label.match(/\b(\d{5})\b/)?.[1] ?? null;
+    const cp = cpFromGeocodeLabel(hit.label);
     setActiveCp(cp);
     setZone({
       lat: hit.lat,
@@ -332,6 +383,7 @@ function OportunidadesPageContent() {
       cp,
       radiusM: radiusFromGeocodeHit(hit),
       label: hit.label,
+      bbox: hit.bbox,
     });
   }, []);
 
@@ -452,6 +504,14 @@ function OportunidadesPageContent() {
         loading={loading}
         advancedOpen={advancedOpen}
         onAdvancedOpenChange={setAdvancedOpen}
+        zoneLabel={zone?.label ?? null}
+        zoneCpNote={
+          zone && zone.cp
+            ? `CP ${zone.cp} · ${Math.round(zone.radiusM / 1000)} km a la redonda`
+            : zone
+              ? `Área · ${Math.round(zone.radiusM / 1000)} km a la redonda`
+              : null
+        }
         onReset={() => {
           setFilters(defaultOportunidadFilters());
           setSort("score_desc");
@@ -529,6 +589,19 @@ function OportunidadesPageContent() {
                   <RadarOpportunityListRow key={row.id} {...cardProps(row)} />
                 )
               )}
+            </div>
+          )}
+
+          {!loading && zone && zoneHasMore && viewMode !== "map" && (
+            <div className="mt-8 flex justify-center">
+              <button
+                type="button"
+                disabled={loadingMore}
+                onClick={() => void loadZoneFeed(zone, { live: false, append: true })}
+                className="rounded-full border border-neutral-300 bg-white px-6 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50 disabled:opacity-50"
+              >
+                {loadingMore ? "Cargando…" : "Cargar más en esta zona"}
+              </button>
             </div>
           )}
         </section>
