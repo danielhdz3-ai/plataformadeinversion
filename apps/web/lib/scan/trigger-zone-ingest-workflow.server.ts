@@ -35,5 +35,7 @@ export async function triggerScanZoneIngestWorkflow(scanId: string): Promise<boo
 export function shouldOffloadScanIngestToActions(): boolean {
   if (process.env.SCAN_INGEST_USE_ACTIONS === "0") return false;
   if (process.env.SCAN_INGEST_USE_ACTIONS === "1") return true;
-  return process.env.VERCEL === "1";
+  if (process.env.VERCEL !== "1") return false;
+  const token = process.env.GITHUB_WORKFLOW_TOKEN ?? process.env.GH_TOKEN;
+  return Boolean(token?.trim());
 }

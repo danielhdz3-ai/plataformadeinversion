@@ -32,6 +32,27 @@ export function setCachedGeocodeHits(q: string, hits: GeocodeHit[]) {
   store.set(key, { hits, exp: Date.now() + TTL_MS });
 }
 
+/**
+ * Caché de resultados vacíos: evita machacar Nominatim (rate limit 1 req/s)
+ * cuando el usuario escribe letra a letra y el lugar no existe.
+ */
+const FUZZY_TTL_SECONDS = 45;
+const SUCCESS_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+export function cachedFuzzyHits(q: string): GeocodeHit[] | null {
+  const hit = store.get(`fuzzy:${normKey(q)}`);
+  if (!hit || Date.now() > hit.exp) return null;
+  return hit.hits;
+}
+
+export function setFuzzyHits(q: string, hits: GeocodeHit[]) {
+  const key = `fuzzy:${normKey(q)}`;
+  store.set(key, {
+    hits,
+    exp: Date.now() + (hits.length ? SUCCESS_TTL_SECONDS : FUZZY_TTL_SECONDS) * 1000,
+  });
+}
+
 export function getCachedPostalHit(postal: string): GeocodeHit | null {
   const key = `cp:${postal}`;
   const hit = store.get(key);

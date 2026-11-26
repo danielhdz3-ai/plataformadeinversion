@@ -17,6 +17,7 @@ import {
 import { refreshPostalCodeLive } from "@/lib/scrape/scrape-postal-code.server";
 import { geocodeSpainQuery, reverseGeocodeSpain } from "@/lib/map/geocode-spain";
 import { portalsForCpLiveImport } from "@/lib/scrape/cp-live-portals";
+import { promiseWithTimeout } from "@/lib/ops/promise-timeout";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDbClient, requireAppUser } from "@/lib/supabase/request-client";
 import { after, NextResponse } from "next/server";
@@ -26,6 +27,7 @@ export const maxDuration = 300;
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  const forceFinish = new URL(req.url).searchParams.get("force") === "1";
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
@@ -42,7 +44,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { data: scanRow, error } = await supabase
     .from("scans")
-    .select("polygon, filters, operation")
+    .select("polygon, filters, operation, status, progress_pct")
     .eq("id", id)
     .single();
   if (error || !scanRow) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -51,6 +53,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const filters = (scanRow.filters ?? {}) as ScanRunFilters;
   normalizeScanFilters(filters as Record<string, unknown>);
   const portals = resolveScanPortals(filters);
+
+  const prevStatus = scanRow.status as string | undefined;
+  const prevProgress = (scanRow.progress_pct as number | undefined) ?? 0;
+  if (prevStatus === "completed") {
+    return NextResponse.json({ ok: true, status: "completed" }, { status: 200 });
+  }
+  if (forceFinish && (prevStatus === "running" || prevStatus === "pending")) {
+    after(async () => {
+      try {
+        await completeScanAfterIngest(
+          id,
+          polygon,
+          filters,
+          scanRow.operation ?? "buy_to_rent",
+          { ok: false, error: "force_finish" }
+        );
+      } catch (e) {
+        console.error("scan force finish", id, e);
+      }
+    });
+    return NextResponse.json({ ok: true, status: "running", forceFinish: true }, { status: 202 });
+  }
+
+  if (prevStatus === "running" && prevProgress > 4) {
+    return NextResponse.json({ ok: true, status: "running", deduped: true }, { status: 202 });
+  }
 
   await supabase.from("scans").update({ status: "running", progress_pct: 5 }).eq("id", id);
 
@@ -71,17 +99,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         const hits = await geocodeSpainQuery(`${lat.toFixed(5)},${lng.toFixed(5)}`);
         cp = hits[0]?.label.match(/\b(\d{5})\b/)?.[1];
       }
-      if (cp) {
-        scanPostalCode = cp;
-        await supabase
-          .from("scans")
-          .update({ progress_pct: 8, error_message: "Scrape en vivo (CP) antes del ranking…" })
-          .eq("id", id);
-        await refreshPostalCodeLive(cp, { portals: portalsForCpLiveImport(), force: true });
-      }
+      if (cp) scanPostalCode = cp;
     }
   } catch (e) {
-    console.warn("scan sync cp scrape", id, e);
+    console.warn("scan resolve cp", id, e);
   }
 
   if (actionsDispatched) {
@@ -95,24 +116,58 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       .eq("id", id);
   }
 
+  const postalCodeForAfter = scanPostalCode;
+  const cpScrapeMs = Number(process.env.SCAN_CP_SCRAPE_TIMEOUT_MS ?? "45_000");
+  const ingestMs = Number(process.env.SCAN_INGEST_TIMEOUT_MS ?? "120_000");
+
   after(async () => {
     const admin = createAdminClient();
+    let ingest: Awaited<ReturnType<typeof prefetchScanZoneInventory>> = {
+      ok: false,
+      reason: "not_started",
+    };
     try {
+      if (postalCodeForAfter) {
+        try {
+          await admin
+            .from("scans")
+            .update({
+              progress_pct: 8,
+              error_message: "Scrape en vivo (CP) antes del ranking…",
+            })
+            .eq("id", id);
+          await promiseWithTimeout(
+            refreshPostalCodeLive(postalCodeForAfter, {
+              portals: portalsForCpLiveImport(),
+              force: true,
+            }),
+            cpScrapeMs,
+            "cp_scrape_timeout"
+          );
+        } catch (e) {
+          console.warn("scan cp scrape", id, e);
+        }
+      }
+
       await admin
         .from("scans")
         .update({ progress_pct: 15, error_message: "Importando anuncios del barrio (portales)…" })
         .eq("id", id);
 
-      let ingest: Awaited<ReturnType<typeof prefetchScanZoneInventory>> = {
-        ok: false,
-        reason: "not_started",
-      };
       try {
-        ingest = await prefetchScanZoneInventory(polygon, {
-          scanId: id,
-          portals,
-          postalCode: scanPostalCode,
-        });
+        if (actionsDispatched) {
+          ingest = { ok: true, skipped: true, reason: "github_actions_ingest" };
+        } else {
+          ingest = await promiseWithTimeout(
+            prefetchScanZoneInventory(polygon, {
+              scanId: id,
+              portals,
+              postalCode: postalCodeForAfter,
+            }),
+            ingestMs,
+            "ingest_timeout"
+          );
+        }
         console.info("zone ingest", id, ingest);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -121,16 +176,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         await admin
           .from("scans")
           .update({
-            error_message: `Importación interrumpida (${msg}). Ranking con inventario ya en base de datos…`,
-          })
-          .eq("id", id);
-      }
-
-      if (!ingest.ok && ingest.error) {
-        await admin
-          .from("scans")
-          .update({
-            error_message: `Importación parcial: ${ingest.error}. Se continúa con datos existentes.`,
+            error_message: `Importación acotada (${msg}). Ranking con inventario ya en base de datos…`,
           })
           .eq("id", id);
       }
@@ -151,14 +197,25 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      await admin
-        .from("scans")
-        .update({
-          status: "failed",
-          progress_pct: 0,
-          error_message: msg.slice(0, 480) || "Error en scan",
-        })
-        .eq("id", id);
+      try {
+        await completeScanAfterIngest(
+          id,
+          polygon,
+          filters,
+          scanRow.operation ?? "buy_to_rent",
+          { ok: false, error: msg }
+        );
+      } catch (e2) {
+        console.error("scan complete fallback failed", id, e2);
+        await admin
+          .from("scans")
+          .update({
+            status: "failed",
+            progress_pct: 0,
+            error_message: msg.slice(0, 480) || "Error en scan",
+          })
+          .eq("id", id);
+      }
       console.error("scan run failed", id, e);
     }
   });
